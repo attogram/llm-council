@@ -17,4 +17,4 @@ A bash script to start a chat between 2 or more LLMs running on ollama
   ```
   ./council.sh -m model1,model2,model3,model4
   ```
-
+- To stop the council, press **Control-C**
