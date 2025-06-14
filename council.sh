@@ -1,10 +1,11 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="0.1"
+VERSION="0.2"
 URL="https://github.com/attogram/llm-council"
+CONTEXT_SIZE="420" # number of lines in the context
 
-# echo; echo "$NAME v$VERSION"; echo
+echo; echo "$NAME v$VERSION"; echo
 
 function parseCommandLine {
   modelsList=""
@@ -94,8 +95,8 @@ function getRandomModel {
   echo "${filtered_models[$RANDOM % ${#filtered_models[@]}]}"
 }
 
-function getDateTime {
-  echo "$(date '+%Y-%m-%d %H:%M:%S')"
+function saveContext {
+  echo "$context" > "./context.txt" # save current context to file
 }
 
 export OLLAMA_MAX_LOADED_MODELS=2
@@ -103,42 +104,38 @@ parseCommandLine "$@"
 setModels
 setPrompt
 
-chatInstructions="You are chatting.
-Included below is a log of the conversation so far, in reverse chronological order.
-Continue the conversation:"
+chatInstructions="You are in a group chat room.
+The other members in the room are also LLMs.
+The chat room is a council, tasked with discussion and debate on this topic:
 
-context="<user> wrote @ $(getDateTime):
-$prompt"
+$prompt
 
-echo "$context" > "./context.txt" # save current context to file
+Review the group chat log below, it contains the most recent $CONTEXT_SIZE lines of the chat.
+Continue the chat conversation, as yourself.
 
-echo
-echo "$context"
+Chat Log:
+
+"
+
+context="<user> $prompt"
+saveContext
+
+echo "${chatInstructions}${context}"
 echo
 
 model=$(getRandomModel)
-
 while true; do
-  echo -n "<$model>"
-  response=$(ollama run "$model" --hidethinking -- "$chatInstructions \n $context" 2> /dev/null)
-
+  echo -n "<$model> "
+  response=$(ollama run "$model" --hidethinking -- "${chatInstructions}${context}" 2> /dev/null)
   if [ -z "${response}" ]; then
     response="?"
   fi
-  wroteAt="wrote @ $(getDateTime):"
-
-  echo " $wroteAt
-$response"
+  echo "$response"
   echo
+  context+="
 
-  context="<$model> $wroteAt
-$response
-
-$context"
-
-  context=$(echo "$context" | head -n 500)  # trim to first 100 lines
-
-  echo "$context" > "./context.txt" # save current context to file
-
+<$model>: $response"
+  context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
+  saveContext
   model=$(getRandomModel "$model")
 done
