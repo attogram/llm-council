@@ -1,7 +1,7 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="0.4"
+VERSION="0.5"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
 TIMEOUT="30" # number of seconds to wait for model response
@@ -108,6 +108,7 @@ function runCommandWithTimeout {
   pid=$!
   (
     sleep $timeout
+    echo
     echo "[ERROR: Session Timeout after ${timeout} seconds]"
     if kill -0 $pid 2>/dev/null; then
       kill $pid 2>/dev/null
@@ -118,6 +119,10 @@ function runCommandWithTimeout {
   kill $wait_pid 2>/dev/null
 }
 
+function modelsList {
+  printf "<%s>, " "${models[@]}" | paste -sd "," -
+}
+
 export OLLAMA_MAX_LOADED_MODELS=2
 parseCommandLine "$@"
 setModels
@@ -126,11 +131,9 @@ setPrompt
 model=$(getRandomModel)
 
 chatInstructions="You are in a group chat room.
-You are user <$model>.  You are a Large Language Model. 
-Do not pretend to be anyone else.  Answer only as yourself.
+You are user <$model>.  Do not pretend to be anyone else.  Answer only as yourself.
 Be concise in your response.  You have only ${TIMEOUT} seconds to complete your response.
-The users in the room: $(printf "<%s>, " "${models[@]}" | paste -sd "," -)
-The other users are all Large Language Models.
+The users in the room: $(modelsList)
 To mention other users, use syntax: '@username'.  Do not use syntax '<username>'.
 Work together with the other users.  See the latest chat log below for context.
 To change the room topic, send command: '/topic The New Topic'
@@ -145,7 +148,9 @@ Chat Log:
 context="/topic $prompt"
 saveContext
 
-echo "${chatInstructions}${context}"
+echo "Users in chat: $(modelsList)"
+echo
+echo "${context}"
 echo
 
 while true; do
