@@ -1,9 +1,10 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="0.3"
+VERSION="0.4"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
+TIMEOUT="30" # number of seconds to wait for model response
 
 echo; echo "$NAME v$VERSION"; echo
 
@@ -33,7 +34,7 @@ function parseCommandLine {
     esac
   done
   # set positional arguments in their proper place
-  eval set -- "$prompt"
+  eval set -- "${prompt}"
 }
 
 function setModels {
@@ -100,6 +101,23 @@ function saveContext {
   echo "$context" > "./context.txt" # save current context to file
 }
 
+function runCommandWithTimeout {
+  local command="$1"
+  local timeout="$2"
+  $command 2>/dev/null &
+  pid=$!
+  (
+    sleep $timeout
+    echo "[ERROR: Session Timeout after ${timeout} seconds]"
+    if kill -0 $pid 2>/dev/null; then
+      kill $pid 2>/dev/null
+    fi
+  ) &
+  wait_pid=$!
+  wait $pid 2>/dev/null
+  kill $wait_pid 2>/dev/null
+}
+
 export OLLAMA_MAX_LOADED_MODELS=2
 parseCommandLine "$@"
 setModels
@@ -107,22 +125,19 @@ setPrompt
 
 model=$(getRandomModel)
 
-$modelList=
-
 chatInstructions="You are in a group chat room.
 You are user <$model>.  You are a Large Language Model. 
 Do not pretend to be anyone else.  Answer only as yourself.
-Be concise in your response.
+Be concise in your response.  You have only ${TIMEOUT} seconds to complete your response.
 The users in the room: $(printf "<%s>, " "${models[@]}" | paste -sd "," -)
 The other users are all Large Language Models.
 To mention other users, use syntax: '@username'.  Do not use syntax '<username>'.
 Work together with the other users.  See the latest chat log below for context.
 To change the room topic, send command: '/topic The New Topic'
 This room is a council, tasked with these instructions:
-
+---
 $prompt
-
-
+---
 Chat Log:
 
 "
@@ -134,18 +149,22 @@ echo "${chatInstructions}${context}"
 echo
 
 while true; do
-  #echo
+
   echo -n "<$model> "
-  response=$(ollama run "$model" --hidethinking -- "${chatInstructions}${context}" 2> /dev/null)
+  response=$(runCommandWithTimeout "ollama run ${model} --hidethinking -- ${chatInstructions}${context}" "$TIMEOUT")
   if [ -z "${response}" ]; then
-    response="?"
+    response="[ERROR: No response from ${model}]"
   fi
   echo "$response"
   echo
+
   context+="
 
-<$model>: $response"
+<$model> $response"
+
   context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
+
   saveContext
+
   model=$(getRandomModel "$model")
 done
