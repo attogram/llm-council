@@ -1,9 +1,9 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="0.2"
+VERSION="0.3"
 URL="https://github.com/attogram/llm-council"
-CONTEXT_SIZE="420" # number of lines in the context
+CONTEXT_SIZE="250" # number of lines in the context
 
 echo; echo "$NAME v$VERSION"; echo
 
@@ -74,6 +74,7 @@ function setPrompt {
   if [ -t 0 ]; then # Check if input is from a terminal (interactive)
     echo "Enter prompt:";
     read -r prompt # Read prompt from user input
+    echo
     return
   fi
 
@@ -104,27 +105,36 @@ parseCommandLine "$@"
 setModels
 setPrompt
 
+model=$(getRandomModel)
+
+$modelList=
+
 chatInstructions="You are in a group chat room.
-The other members in the room are also LLMs.
-The chat room is a council, tasked with discussion and debate on this topic:
+You are user <$model>.  You are a Large Language Model. 
+Do not pretend to be anyone else.  Answer only as yourself.
+Be concise in your response.
+The users in the room: $(printf "<%s>, " "${models[@]}" | paste -sd "," -)
+The other users are all Large Language Models.
+To mention other users, use syntax: '@username'.  Do not use syntax '<username>'.
+Work together with the other users.  See the latest chat log below for context.
+To change the room topic, send command: '/topic The New Topic'
+This room is a council, tasked with these instructions:
 
 $prompt
 
-Review the group chat log below, it contains the most recent $CONTEXT_SIZE lines of the chat.
-Continue the chat conversation, as yourself.
 
 Chat Log:
 
 "
 
-context="<user> $prompt"
+context="/topic $prompt"
 saveContext
 
 echo "${chatInstructions}${context}"
 echo
 
-model=$(getRandomModel)
 while true; do
+  #echo
   echo -n "<$model> "
   response=$(ollama run "$model" --hidethinking -- "${chatInstructions}${context}" 2> /dev/null)
   if [ -z "${response}" ]; then
