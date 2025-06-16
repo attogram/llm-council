@@ -1,12 +1,12 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="0.6"
+VERSION="0.7"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
 TIMEOUT="30" # number of seconds to wait for model response
 
-echo; echo "$NAME v$VERSION"; echo
+echo; echo "$NAME v$VERSION";
 
 function parseCommandLine {
   modelsList=""
@@ -73,9 +73,8 @@ function setPrompt {
   fi
 
   if [ -t 0 ]; then # Check if input is from a terminal (interactive)
-    echo "Enter prompt:";
+    echo; echo "Enter prompt:";
     read -r prompt # Read prompt from user input
-    echo
     return
   fi
 
@@ -97,6 +96,38 @@ function getRandomModel {
   echo "${filtered_models[$RANDOM % ${#filtered_models[@]}]}"
 }
 
+function setInstructions {
+  chatInstructions="You are in a group chat room.
+You are user <$model>.  Do not pretend to be anyone else.  Answer only as yourself.
+Be concise in your response.  You have only ${TIMEOUT} seconds to complete your response.
+The users in the room: $(modelsList)
+To mention other users, use syntax: '@username'.  Do not use syntax '<username>'.
+Work together with the other users.  See the latest chat log below for context.
+You do not have to agree with the other users, use your best judgment to form your own opinions.
+To change the room topic, send ONLY the command: '/topic The New Topic'
+This room is a council. The council is tasked with these instructions:
+---
+$prompt
+---
+
+Chat Log:
+
+"
+  saveInstructions
+}
+
+function saveInstructions {
+  echo "$chatInstructions" > "./instructions.txt" # save current context to file
+}
+
+function updateContext {
+  context+="
+
+<$model> $response"
+  context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
+  saveContext
+}
+
 function saveContext {
   echo "$context" > "./context.txt" # save current context to file
 }
@@ -108,8 +139,7 @@ function runCommandWithTimeout {
   pid=$!
   (
     sleep $timeout
-    echo
-    echo "[ERROR: Session Timeout after ${timeout} seconds]"
+    echo; echo "[ERROR: Session Timeout after ${timeout} seconds]"
     if kill -0 $pid 2>/dev/null; then
       kill $pid 2>/dev/null
     fi
@@ -120,57 +150,29 @@ function runCommandWithTimeout {
 }
 
 function modelsList {
-  printf "<%s>, " "${models[@]}" | paste -sd "," -
+  printf "<%s> " "${models[@]}"
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
 
 parseCommandLine "$@"
 setModels
+echo; echo "Users in chat: $(modelsList)"
 setPrompt
-
 model=$(getRandomModel)
-
-chatInstructions="You are in a group chat room.
-You are user <$model>.  Do not pretend to be anyone else.  Answer only as yourself.
-Be concise in your response.  You have only ${TIMEOUT} seconds to complete your response.
-The users in the room: $(modelsList)
-To mention other users, use syntax: '@username'.  Do not use syntax '<username>'.
-Work together with the other users.  See the latest chat log below for context.
-To change the room topic, send command: '/topic The New Topic'
-This room is a council, tasked with these instructions:
----
-$prompt
----
-Chat Log:
-
-"
-
+setInstructions
 context="/topic $prompt"
 saveContext
-
-echo "Users in chat: $(modelsList)"
-echo
-echo "${context}"
-echo
+echo; echo "${context}"
 
 while true; do
-
-  echo -n "<$model> "
+  echo
   response=$(runCommandWithTimeout "ollama run ${model} --hidethinking -- ${chatInstructions}${context}" "$TIMEOUT")
   if [ -z "${response}" ]; then
-    response="[ERROR: No response from ${model}]"
+    response="<$model> [ERROR: No response from ${model}]"
   fi
-  echo "$response"
-  echo
-
-  context+="
-
-<$model> $response"
-
-  context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
-
-  saveContext
-
+  echo "<$model> $response"
+  updateContext
   model=$(getRandomModel "$model")
+  setInstructions
 done
