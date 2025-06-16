@@ -1,7 +1,7 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="0.8"
+VERSION="0.9"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
 TIMEOUT="30" # number of seconds to wait for model response
@@ -97,15 +97,15 @@ function getRandomModel {
 }
 
 function setInstructions {
-  chatInstructions="You are in a group chat room.
-You are user <$model>.  Do not pretend to be anyone else.  Answer only as yourself.
-Be concise in your response.  You have only ${TIMEOUT} seconds to complete your response.
+  chatInstructions="You are in a group chat room.  This room is a council.
+You are user <$model>. Do not pretend to be anyone else.  Answer only as yourself.
+Be concise in your response. You have only ${TIMEOUT} seconds to complete your response.
 The users in the room: $(modelsList)
 To mention other users, use syntax: '@username'. Do not use syntax '<username>'.
 Work together with the other users.  See the latest chat log below for context.
 You do not have to agree with the other users, use your best judgment to form your own opinions.
-To change the room topic, send ONLY the command: '/topic The New Topic'
-This room is a council. The council is tasked with these instructions:
+You may steer the conversation to a new topic by sending ONLY the command: /topic <new topic>
+The council is tasked with these instructions:
 ---
 $prompt
 ---
@@ -165,14 +165,15 @@ function checkForTopicCommand {
 
 function setNewTopic {
   local newTopic="$1"
-  echo; echo "[SYSTEM] Topic changed to: $newTopic"
+  changeNotice="[SYSTEM] Topic changed to: $newTopic"
   prompt="$newTopic"
   setInstructions
   context+="
 
-/topic $newTopic
+$changeNotice
 "
   saveContext
+  echo; echo "$changeNotice"; echo
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
@@ -182,16 +183,15 @@ setModels
 echo; echo "Users in chat: $(modelsList)"
 setPrompt
 model=$(getRandomModel)
-setInstructions
-context="/topic $prompt"
-saveContext
-echo; echo "${context}"
+context="[SYSTEM] The council chat is now active."
+echo; echo "${context}";
+setNewTopic "$prompt"
 
 while true; do
   echo
   response=$(runCommandWithTimeout "ollama run ${model} --hidethinking -- ${chatInstructions}${context}" "$TIMEOUT")
   if [ -z "${response}" ]; then
-    response="<$model> [ERROR: No response from ${model}]"
+    response="[ERROR: No response from ${model}]"
   fi
   echo "<$model> $response"
   updateContext
