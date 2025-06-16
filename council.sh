@@ -1,7 +1,7 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="0.7"
+VERSION="0.8"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
 TIMEOUT="30" # number of seconds to wait for model response
@@ -101,7 +101,7 @@ function setInstructions {
 You are user <$model>.  Do not pretend to be anyone else.  Answer only as yourself.
 Be concise in your response.  You have only ${TIMEOUT} seconds to complete your response.
 The users in the room: $(modelsList)
-To mention other users, use syntax: '@username'.  Do not use syntax '<username>'.
+To mention other users, use syntax: '@username'. Do not use syntax '<username>'.
 Work together with the other users.  See the latest chat log below for context.
 You do not have to agree with the other users, use your best judgment to form your own opinions.
 To change the room topic, send ONLY the command: '/topic The New Topic'
@@ -153,6 +153,28 @@ function modelsList {
   printf "<%s> " "${models[@]}"
 }
 
+function checkForTopicCommand {
+  local modelResponse="$1"
+  # Remove leading/trailing whitespace and check if it matches /topic pattern
+  local trimmedResponse=$(echo "$modelResponse" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then
+    local newTopic="${BASH_REMATCH[1]}"
+    setNewTopic "$newTopic"
+  fi
+}
+
+function setNewTopic {
+  local newTopic="$1"
+  echo; echo "[SYSTEM] Topic changed to: $newTopic"
+  prompt="$newTopic"
+  setInstructions
+  context+="
+
+/topic $newTopic
+"
+  saveContext
+}
+
 export OLLAMA_MAX_LOADED_MODELS=1
 
 parseCommandLine "$@"
@@ -173,6 +195,7 @@ while true; do
   fi
   echo "<$model> $response"
   updateContext
+  checkForTopicCommand "$response"
   model=$(getRandomModel "$model")
   setInstructions
 done
