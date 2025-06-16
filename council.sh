@@ -1,7 +1,7 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="0.9"
+VERSION="1.0"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
 TIMEOUT="30" # number of seconds to wait for model response
@@ -105,7 +105,7 @@ To mention other users, use syntax: '@username'. Do not use syntax '<username>'.
 Work together with the other users.  See the latest chat log below for context.
 You do not have to agree with the other users, use your best judgment to form your own opinions.
 You may steer the conversation to a new topic by sending ONLY the command: /topic <new topic>
-The council is tasked with these instructions:
+The council is tasked with this topic:
 ---
 $prompt
 ---
@@ -170,10 +170,9 @@ function setNewTopic {
   setInstructions
   context+="
 
-$changeNotice
-"
+$changeNotice"
   saveContext
-  echo; echo "$changeNotice"; echo
+  echo; echo "$changeNotice";
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
