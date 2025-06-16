@@ -1,7 +1,7 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="0.5"
+VERSION="0.6"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
 TIMEOUT="30" # number of seconds to wait for model response
@@ -123,7 +123,8 @@ function modelsList {
   printf "<%s>, " "${models[@]}" | paste -sd "," -
 }
 
-export OLLAMA_MAX_LOADED_MODELS=2
+export OLLAMA_MAX_LOADED_MODELS=1
+
 parseCommandLine "$@"
 setModels
 setPrompt
