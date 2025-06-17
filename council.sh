@@ -1,7 +1,7 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="1.1"
+VERSION="1.2"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
@@ -139,7 +139,7 @@ function runCommandWithTimeout {
   pid=$!
   (
     sleep "$TIMEOUT"
-    echo; echo "[ERROR: Session Timeout after ${$TIMEOUT} seconds]"
+    echo; echo "[ERROR: Session Timeout after ${TIMEOUT} seconds]"
     if kill -0 $pid 2>/dev/null; then
       kill $pid 2>/dev/null
     fi
