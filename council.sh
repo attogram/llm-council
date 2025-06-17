@@ -1,12 +1,36 @@
 #!/bin/bash
 
 NAME="llm-council"
-VERSION="1.0"
+VERSION="1.1"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
-TIMEOUT="30" # number of seconds to wait for model response
+TIMEOUT="60" # number of seconds to wait for model response
 
 echo; echo "$NAME v$VERSION";
+
+function setInstructions {
+  chatInstructions="You are in a group chat room.
+You are user <$model>. Do not pretend to be anyone else.  Answer only as yourself.
+Be concise in your response. You have only ${TIMEOUT} seconds to complete your response.
+The users in the room: $(modelsList)
+To mention other users, use syntax: '@username'. Do not use syntax '<username>'.
+You do not have to agree with the other users, use your best judgment to form your own opinions.
+You may steer the conversation to a new topic. Send ONLY the command: /topic <new topic>
+You may leave the chat room if you want to end your participation. Send ONLY the command: /quit <optional reason>
+See the latest chat log below for context.
+The room topic is:
+---
+$prompt
+---
+
+Chat Log:
+"
+  saveInstructions
+}
+
+function saveInstructions {
+  echo "$chatInstructions" > "./instructions.txt" # save current context to file
+}
 
 function parseCommandLine {
   modelsList=""
@@ -96,34 +120,11 @@ function getRandomModel {
   echo "${filtered_models[$RANDOM % ${#filtered_models[@]}]}"
 }
 
-function setInstructions {
-  chatInstructions="You are in a group chat room.  This room is a council.
-You are user <$model>. Do not pretend to be anyone else.  Answer only as yourself.
-Be concise in your response. You have only ${TIMEOUT} seconds to complete your response.
-The users in the room: $(modelsList)
-To mention other users, use syntax: '@username'. Do not use syntax '<username>'.
-Work together with the other users.  See the latest chat log below for context.
-You do not have to agree with the other users, use your best judgment to form your own opinions.
-You may steer the conversation to a new topic by sending ONLY the command: /topic <new topic>
-The council is tasked with this topic:
----
-$prompt
----
-
-Chat Log:
-
-"
-  saveInstructions
-}
-
-function saveInstructions {
-  echo "$chatInstructions" > "./instructions.txt" # save current context to file
-}
-
-function updateContext {
+function addToContext {
   context+="
 
-<$model> $response"
+$1"
+  echo; echo "$1"
   context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
   saveContext
 }
@@ -134,12 +135,11 @@ function saveContext {
 
 function runCommandWithTimeout {
   local command="$1"
-  local timeout="$2"
   $command 2>/dev/null &
   pid=$!
   (
-    sleep $timeout
-    echo; echo "[ERROR: Session Timeout after ${timeout} seconds]"
+    sleep "$TIMEOUT"
+    echo; echo "[ERROR: Session Timeout after ${$TIMEOUT} seconds]"
     if kill -0 $pid 2>/dev/null; then
       kill $pid 2>/dev/null
     fi
@@ -153,48 +153,70 @@ function modelsList {
   printf "<%s> " "${models[@]}"
 }
 
-function checkForTopicCommand {
-  local modelResponse="$1"
-  # Remove leading/trailing whitespace and check if it matches /topic pattern
-  local trimmedResponse=$(echo "$modelResponse" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-  if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then
-    local newTopic="${BASH_REMATCH[1]}"
-    setNewTopic "$newTopic"
+function quitChat {
+  local model="$1"
+  local reason="$2"
+  changeNotice="[SYSTEM] $model has left the chat"
+  if [ -n "$reason" ]; then
+    changeNotice+=": $reason"
+  fi
+  addToContext "$changeNotice"
+
+  # Remove the model from the models array
+  local newModels=()
+  for m in "${models[@]}"; do
+    if [ " $m " != " $model " ]; then
+      newModels+=("$m")
+    fi
+  done
+  models=("${newModels[@]}")
+
+  #echo; echo "[DEBUG] ${#models[@]} users in chat: $(modelsList)"
+
+  # Check if we still have enough models to continue
+  if [ ${#models[@]} -lt 1 ]; then
+    echo; echo "[SYSTEM] No models remaining. Chat ending."
+    exit 0
   fi
 }
 
 function setNewTopic {
-  local newTopic="$1"
-  changeNotice="[SYSTEM] Topic changed to: $newTopic"
-  prompt="$newTopic"
+  changeNotice="[SYSTEM] Topic changed to: $1"
+  prompt="$1"
   setInstructions
-  context+="
+  addToContext "$changeNotice"
+}
 
-$changeNotice"
-  saveContext
-  echo; echo "$changeNotice";
+function handleCommands {
+  # Remove leading/trailing whitespace and check if it matches /topic pattern
+  local trimmedResponse=$(echo "$response" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then  
+    setNewTopic "${BASH_REMATCH[1]}"
+  elif [[ "$trimmedResponse" = "/quit" ]]; then
+    quitChat "$model"
+  elif [[ "$trimmedResponse" =~ ^/quit[[:space:]]+(.+)$ ]]; then
+    quitChat "$model" "${BASH_REMATCH[1]}"
+  fi
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
 
 parseCommandLine "$@"
 setModels
-echo; echo "Users in chat: $(modelsList)"
+echo; echo "[DEBUG] ${#models[@]} users in chat: $(modelsList)"
+echo; echo "[DEBUG] TIMEOUT: ${TIMEOUT} seconds"
 setPrompt
 model=$(getRandomModel)
-context="[SYSTEM] The council chat is now active."
-echo; echo "${context}";
+context=""
 setNewTopic "$prompt"
 
 while true; do
-  echo
-  response=$(runCommandWithTimeout "ollama run ${model} --hidethinking -- ${chatInstructions}${context}" "$TIMEOUT")
+  response=$(runCommandWithTimeout "ollama run ${model} --hidethinking -- ${chatInstructions}${context}")
   if [ -z "${response}" ]; then
     response="[ERROR: No response from ${model}]"
   fi
-  echo "<$model> $response"
-  updateContext
-  checkForTopicCommand "$response"
+  addToContext "<$model> $response"
+  handleCommands
   model=$(getRandomModel "$model")
   setInstructions
 done
