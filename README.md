@@ -18,6 +18,12 @@ A bash script to start a chat between 2 or more LLMs running on ollama
   ```
   ./council.sh -m model1,model2,model3,model4
   ```
+
+- Set the timeout (in seconds)
+```
+./council.sh -t 30
+```
+  
 - To stop the council, press **Control-C**
 
 ## Other Attogram Projects
