@@ -1,7 +1,23 @@
 #!/bin/bash
-
+#
+# llm-council
+#
+# A group chat room with all your ollama models, or a selection of your ollama models
+#
+# Usage:
+#
+#  Use all models:
+#    ./council.sh
+#
+#  Specify which models to use:
+#    ./council.sh -m model1,model2,model3
+#
+#  Set Timeout
+#    ./council.sh -t 30
+#
+#
 NAME="llm-council"
-VERSION="1.2"
+VERSION="1.3"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="250" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
@@ -10,15 +26,14 @@ echo; echo "$NAME v$VERSION";
 
 function setInstructions {
   chatInstructions="You are in a group chat room.
-You are user <$model>. Do not pretend to be anyone else.  Answer only as yourself.
+You are user <$model>. Answer only as yourself. Do not pretend to be anyone else.
 Be concise in your response. You have only ${TIMEOUT} seconds to complete your response.
-The users in the room: $(modelsList)
-To mention other users, use syntax: '@username'. Do not use syntax '<username>'.
+To mention other users, use syntax: '@username'.
 You do not have to agree with the other users, use your best judgment to form your own opinions.
 You may steer the conversation to a new topic. Send ONLY the command: /topic <new topic>
 You may leave the chat room if you want to end your participation. Send ONLY the command: /quit <optional reason>
-See the latest chat log below for context.
-The room topic is:
+See the chat log below for context.
+The current room topic is:
 ---
 $prompt
 ---
@@ -41,6 +56,15 @@ function parseCommandLine {
       -m) # specify models to run
         if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
           modelsList=$2
+          shift 2
+        else
+          echo "Error: Argument for $1 is missing" >&2
+          exit 1
+        fi
+        ;;
+      -t) # set timeout
+        if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
+          TIMEOUT=$2
           shift 2
         else
           echo "Error: Argument for $1 is missing" >&2
@@ -156,7 +180,7 @@ function modelsList {
 function quitChat {
   local model="$1"
   local reason="$2"
-  changeNotice="[SYSTEM] $model has left the chat"
+  changeNotice="[SYSTEM] <$model> has left the chat"
   if [ -n "$reason" ]; then
     changeNotice+=": $reason"
   fi
@@ -181,7 +205,7 @@ function quitChat {
 }
 
 function setNewTopic {
-  changeNotice="[SYSTEM] Topic changed to: $1"
+  changeNotice="[SYSTEM] <$model> changed the topic to: $1"
   prompt="$1"
   setInstructions
   addToContext "$changeNotice"
@@ -192,11 +216,15 @@ function handleCommands {
   local trimmedResponse=$(echo "$response" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
   if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then  
     setNewTopic "${BASH_REMATCH[1]}"
+    return 1;
   elif [[ "$trimmedResponse" = "/quit" ]]; then
     quitChat "$model"
+    return 1;
   elif [[ "$trimmedResponse" =~ ^/quit[[:space:]]+(.+)$ ]]; then
     quitChat "$model" "${BASH_REMATCH[1]}"
+    return 1;
   fi
+  return 0;
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
@@ -207,16 +235,16 @@ echo; echo "[DEBUG] ${#models[@]} users in chat: $(modelsList)"
 echo; echo "[DEBUG] TIMEOUT: ${TIMEOUT} seconds"
 setPrompt
 model=$(getRandomModel)
-context=""
-setNewTopic "$prompt"
+context="[SYSTEM] Topic is: $prompt"
+echo; echo "$context"; echo;
+
 
 while true; do
   response=$(runCommandWithTimeout "ollama run ${model} --hidethinking -- ${chatInstructions}${context}")
   if [ -z "${response}" ]; then
     response="[ERROR: No response from ${model}]"
   fi
-  addToContext "<$model> $response"
-  handleCommands
+  handleCommands && addToContext "<$model> $response"
   model=$(getRandomModel "$model")
   setInstructions
 done
