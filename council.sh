@@ -17,7 +17,7 @@
 #
 #
 NAME="llm-council"
-VERSION="1.4"
+VERSION="1.5"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="500" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
@@ -44,7 +44,7 @@ Chat Log:
 }
 
 function saveInstructions {
-  echo "$chatInstructions" > "./instructions.txt" # save current context to file
+  #echo "$chatInstructions" > "./instructions.txt" # save current context to file
 }
 
 function parseCommandLine {
@@ -154,7 +154,7 @@ $1"
 }
 
 function saveContext {
-  echo "$context" > "./context.txt" # save current context to file
+  #echo "$context" > "./context.txt" # save current context to file
 }
 
 function runCommandWithTimeout {
