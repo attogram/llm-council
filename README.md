@@ -20,9 +20,9 @@ A bash script to start a chat between 2 or more LLMs running on ollama
   ```
 
 - Set the timeout (in seconds)
-```
-./council.sh -t 30
-```
+  ```
+  ./council.sh -t 30
+  ```
   
 - To stop the council, press **Control-C**
 
