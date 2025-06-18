@@ -17,9 +17,9 @@
 #
 #
 NAME="llm-council"
-VERSION="1.3"
+VERSION="1.4"
 URL="https://github.com/attogram/llm-council"
-CONTEXT_SIZE="250" # number of lines in the context
+CONTEXT_SIZE="500" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
 
 echo; echo "$NAME v$VERSION";
@@ -35,7 +35,7 @@ You may leave the chat room if you want to end your participation. Send ONLY the
 See the chat log below for context.
 The current room topic is:
 ---
-$prompt
+$topic
 ---
 
 Chat Log:
@@ -50,7 +50,7 @@ function saveInstructions {
 function parseCommandLine {
   modelsList=""
   resultsDirectory="results"
-  prompt=""
+  topic=""
   while (( "$#" )); do
     case "$1" in
       -m) # specify models to run
@@ -76,13 +76,13 @@ function parseCommandLine {
         exit 1
         ;;
       *) # preserve positional arguments
-        prompt+="$1"
+        topic+="$1"
         shift
         ;;
     esac
   done
   # set positional arguments in their proper place
-  eval set -- "${prompt}"
+  eval set -- "${topic}"
 }
 
 function setModels {
@@ -115,18 +115,18 @@ function setModels {
   
 }
 
-function setPrompt {
-  if [ -n "$prompt" ]; then # if prompt is already set from command line
+function setTopic {
+  if [ -n "$topic" ]; then # if topic is already set from command line
     return
   fi
 
   if [ -t 0 ]; then # Check if input is from a terminal (interactive)
-    echo; echo "Enter prompt:";
-    read -r prompt # Read prompt from user input
+    echo; echo "Enter topic:";
+    read -r topic # Read topic from user input
     return
   fi
 
-  prompt=$(cat) # Read from standard input (pipe or file)
+  topic=$(cat) # Read from standard input (pipe or file)
 }
 
 function getRandomModel {
@@ -206,7 +206,7 @@ function quitChat {
 
 function setNewTopic {
   changeNotice="[SYSTEM] <$model> changed the topic to: $1"
-  prompt="$1"
+  topic="$1"
   setInstructions
   addToContext "$changeNotice"
 }
@@ -233,9 +233,9 @@ parseCommandLine "$@"
 setModels
 echo; echo "[DEBUG] ${#models[@]} users in chat: $(modelsList)"
 echo; echo "[DEBUG] TIMEOUT: ${TIMEOUT} seconds"
-setPrompt
+setTopic
 model=$(getRandomModel)
-context="[SYSTEM] Topic is: $prompt"
+context="[SYSTEM] Topic is: $topic"
 echo; echo "$context"; echo;
 
 
