@@ -1,6 +1,17 @@
 # llm-council
 
-A bash script to start a chat between 2 or more LLMs running on ollama
+A bash script to start a chat room between all, or some, of your models running on ollama.
+
+You set the initial topic, then the models take over.
+
+Models may use these commands:
+- ```/topic <new topic>```
+  - shows topic change to the room
+  - sets the topic into the chat instructions
+- ```/quit```
+- ```/quit <reason>```
+  - shows leaving message to the room
+  - removes model from the chat
 
 ## Usage
 
