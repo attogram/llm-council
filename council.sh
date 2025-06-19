@@ -16,17 +16,31 @@
 #    ./council.sh -t 30
 #
 NAME="llm-council"
-VERSION="1.9"
+VERSION="2.0"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="500" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
 DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
 
+# ANSI escape codes
+RESPONSE_BACKGROUND_1=$'\e[48;5;250m' # Light grey background color
+RESPONSE_FOREGROUND_1=$'\e[38;5;0m' # Black text color
+RESPONSE_BACKGROUND_2=$'\e[48;5;245m' # Medium grey background color
+RESPONSE_FOREGROUND_2=$'\e[38;5;0m' # Black text color
+DEBUG_BACKGROUND=$'\e[48;5;240m' # background grey
+DEBUG_FOREGROUND=$'\e[38;5;226m' # foreground yellow
+NORMAL_TEXT=$'\e[22m' # Reset all formatting
+BOLD_TEXT=$'\e[1m' # Bold text
+RESET=$'\e[0m' # reset terminal colors
+
+prev_bg_toggle=0 # Keep track of alternating background colors
+
+
 echo; echo "$NAME v$VERSION"; echo;
 
 function debug {
   if [ "$DEBUG_MODE" -eq 1 ]; then
-    echo -e "[DEBUG] $1"
+    echo -e "${DEBUG_BACKGROUND}${DEBUG_FOREGROUND}[DEBUG] $1${RESET}"
     echo
   fi
 }
@@ -140,10 +154,36 @@ function setTopic {
 }
 
 function addToContext {
-  local formatted=$(echo "$1" | sed '1!s/^/    /g')
+  # Set up formatting variables
+  local formatted=$(echo "$1" | sed '1!s/^/    /g') # From 2nd line onwards, indent every line with 4 spaces
+
+  # Add to context without formatting
   context+="\n${formatted}"
-  echo "${formatted}"
   context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
+
+  local display_text=""
+  # Apply bold formatting to model names at start of lines
+  if [[ "$formatted" =~ ^'<'[^'>']+'>' ]]; then
+    local model_part=${BASH_REMATCH[0]}
+    local rest_of_line=${formatted#$model_part}
+    if [ $prev_bg_toggle -eq 0 ]; then
+      display_text="${RESPONSE_BACKGROUND_1}${BOLD_TEXT}${model_part}${NORMAL_TEXT}${RESPONSE_BACKGROUND_1}${RESPONSE_FOREGROUND_1}${rest_of_line}${RESET}"
+      prev_bg_toggle=1
+    else
+      display_text="${RESPONSE_BACKGROUND_2}${BOLD_TEXT}${model_part}${NORMAL_TEXT}${RESPONSE_BACKGROUND_2}${RESPONSE_FOREGROUND_2}${rest_of_line}${RESET}"
+      prev_bg_toggle=0
+    fi
+    echo -e "$display_text"
+  else
+    # No model part to bold, just apply colors
+    if [ $prev_bg_toggle -eq 0 ]; then
+      echo -e "${RESPONSE_BACKGROUND_1}${RESPONSE_FOREGROUND_1}${formatted}${RESET}"
+      prev_bg_toggle=1
+    else
+      echo -e "${RESPONSE_BACKGROUND_2}${RESPONSE_FOREGROUND_2}${formatted}${RESET}"
+      prev_bg_toggle=0
+    fi
+  fi
 }
 
 function runCommandWithTimeout {
@@ -240,8 +280,9 @@ echo "[SYSTEM] TIMEOUT: ${TIMEOUT} seconds"
 echo
 
 setTopic
-context="*** Topic: $topic"
-echo "$context"; echo;
+context=""
+addToContext "*** Topic: $topic"
+#echo "$context"; echo;
 
 while true; do
 
