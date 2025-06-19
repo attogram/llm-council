@@ -16,7 +16,7 @@
 #    ./council.sh -t 30
 #
 NAME="llm-council"
-VERSION="1.8"
+VERSION="1.9"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="500" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
@@ -32,14 +32,14 @@ function debug {
 }
 
 function setInstructions {
-  chatInstructions="You are in a group chat room.
-You are user <$model>. Answer only as yourself. Do not pretend to be anyone else.
+  chatInstructions="You are in a group chat room. You are user <$model>.
+Read the chat log below for context.
 Be concise in your response. You have ${TIMEOUT} seconds to respond.
 To mention other users, use syntax: '@username'.
 Use your best judgment to form your own opinions. You do not have to agree with other users.
 You may steer the conversation to a new topic. Send only the command: /topic <new topic>
 You may leave the chat room if you want to end your participation. Send only the command: /quit <optional reason>
-See the chat log below for context.
+
 The current room topic is:
 ---
 $topic
@@ -140,10 +140,9 @@ function setTopic {
 }
 
 function addToContext {
-  context+="
-
-$1"
-  echo "$1"; echo;
+  local formatted=$(echo "$1" | sed '1!s/^/    /g')
+  context+="\n${formatted}"
+  echo "${formatted}"
   context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
 }
 
@@ -152,7 +151,7 @@ function runCommandWithTimeout {
   pid=$!
   (
     sleep "$TIMEOUT"
-    echo "[ERROR: Session Timeout after ${TIMEOUT} seconds]"
+    debug "[ERROR: Session Timeout after ${TIMEOUT} seconds]"
     if kill -0 $pid 2>/dev/null; then
       kill $pid 2>/dev/null
     fi
@@ -162,8 +161,8 @@ function runCommandWithTimeout {
   kill $wait_pid 2>/dev/null
 }
 
-function modelsList {
-  printf "<%s> " "${models[@]}"
+function roundList {
+  printf "<%s> " "${round[@]}"
 }
 
 function quitChat {
@@ -234,15 +233,15 @@ export OLLAMA_MAX_LOADED_MODELS=1
 parseCommandLine "$@"
 setModels
 
-echo "[SYSTEM] ${#models[@]} models in chat: $(modelsList)";
+startRound
+
+echo "[SYSTEM] ${#models[@]} models in chat: $(roundList)";
 echo "[SYSTEM] TIMEOUT: ${TIMEOUT} seconds"
 echo
 
 setTopic
 context="*** Topic: $topic"
 echo "$context"; echo;
-
-startRound
 
 while true; do
 
