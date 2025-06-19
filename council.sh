@@ -17,7 +17,7 @@
 #
 #
 NAME="llm-council"
-VERSION="1.6"
+VERSION="1.7"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="500" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
@@ -91,7 +91,7 @@ function setModels {
   if [ -n "$modelsList" ]; then
     IFS=',' read -ra modelsListArray <<< "$modelsList" # parse csv into modelsListArray
     for m in "${modelsListArray[@]}"; do
-      if [[ "${models[*]}" =~ "$m" ]]; then # if model exists
+      if [[ " ${models[*]} " =~ " $m " ]]; then # if model exists
         parsedModels+=("$m")
       else
         echo "Error: model not found: $m" >&2
@@ -103,11 +103,10 @@ function setModels {
     models=("${parsedModels[@]}")
   fi
   
-  if [ ${#models[@]} -lt 2 ]; then
-    echo "Error: there must be at least 2 models to chat with each other" >&2
+  if [ ${#models[@]} -lt 1 ]; then
+    echo "Error: there must be at least 1 model to chat" >&2
     exit 1
   fi
-  
 }
 
 function setTopic {
@@ -124,21 +123,6 @@ function setTopic {
   topic=$(cat) # Read from standard input (pipe or file)
 }
 
-function getRandomModel {
-  local exclude_model=$1
-  if [ -z "$exclude_model" ]; then
-    echo "${models[$RANDOM % ${#models[@]}]}"
-    return
-  fi
-  local filtered_models=()
-  for model in "${models[@]}"; do
-    if [ "$model" != "$exclude_model" ]; then
-      filtered_models+=("$model")
-    fi
-  done
-  echo "${filtered_models[$RANDOM % ${#filtered_models[@]}]}"
-}
-
 function addToContext {
   context+="
 
@@ -148,12 +132,11 @@ $1"
 }
 
 function runCommandWithTimeout {
-  local command="$1"
-  $command 2>/dev/null &
+  ollama run "${model}" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null &
   pid=$!
   (
     sleep "$TIMEOUT"
-    echo; echo "[ERROR: Session Timeout after ${TIMEOUT} seconds]"
+    echo "[ERROR: Session Timeout after ${TIMEOUT} seconds]"
     if kill -0 $pid 2>/dev/null; then
       kill $pid 2>/dev/null
     fi
@@ -170,7 +153,7 @@ function modelsList {
 function quitChat {
   local model="$1"
   local reason="$2"
-  changeNotice="[SYSTEM] <$model> has left the chat"
+  changeNotice="*** $model left the chat"
   if [ -n "$reason" ]; then
     changeNotice+=": $reason"
   fi
@@ -185,17 +168,15 @@ function quitChat {
   done
   models=("${newModels[@]}")
 
-  #echo; echo "[DEBUG] ${#models[@]} users in chat: $(modelsList)"
-
   # Check if we still have enough models to continue
   if [ ${#models[@]} -lt 1 ]; then
-    echo; echo "[SYSTEM] No models remaining. Chat ending."
+    echo; echo "[DEBUG] No models remaining. Chat ending."
     exit 0
   fi
 }
 
 function setNewTopic {
-  changeNotice="[SYSTEM] <$model> changed the topic to: $1"
+  changeNotice="*** $model changed topic to: $1"
   topic="$1"
   setInstructions
   addToContext "$changeNotice"
@@ -217,6 +198,19 @@ function handleCommands {
   return 0;
 }
 
+function startRound {
+  round=("${models[@]}")
+
+  # shuffle round
+  local n=${#round[@]}
+  for ((i = n - 1; i > 0; i--)); do
+    local j=$((RANDOM % (i + 1)))
+    local temp=${round[i]}
+    round[i]=${round[j]}
+    round[j]=$temp
+  done
+}
+
 export OLLAMA_MAX_LOADED_MODELS=1
 
 parseCommandLine "$@"
@@ -224,17 +218,20 @@ setModels
 echo; echo "[DEBUG] ${#models[@]} users in chat: $(modelsList)"
 echo; echo "[DEBUG] TIMEOUT: ${TIMEOUT} seconds"
 setTopic
-model=$(getRandomModel)
-context="[SYSTEM] Topic is: $topic"
+context="*** Topic: $topic"
 echo; echo "$context"; echo;
-
+startRound
 
 while true; do
-  response=$(runCommandWithTimeout "ollama run ${model} --hidethinking -- ${chatInstructions}${context}")
+  model="${round[0]}" # Get first speaker from round
+  round=("${round[@]:1}") # Remove speaker from round
+  if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
+    startRound
+  fi
+  response=$(runCommandWithTimeout)
   if [ -z "${response}" ]; then
-    response="[ERROR: No response from ${model}]"
+    response="" # "[ERROR: No response from ${model}]"
   fi
   handleCommands && addToContext "<$model> $response"
-  model=$(getRandomModel "$model")
   setInstructions
 done
