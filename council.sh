@@ -12,26 +12,33 @@
 #  Specify which models to use:
 #    ./council.sh -m model1,model2,model3
 #
-#  Set Timeout
+#  Set Timeout: (number of seconds to wait for model response)
 #    ./council.sh -t 30
 #
-#
 NAME="llm-council"
-VERSION="1.7"
+VERSION="1.8"
 URL="https://github.com/attogram/llm-council"
 CONTEXT_SIZE="500" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
+DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
 
-echo; echo "$NAME v$VERSION";
+echo; echo "$NAME v$VERSION"; echo;
+
+function debug {
+  if [ "$DEBUG_MODE" -eq 1 ]; then
+    echo -e "[DEBUG] $1"
+    echo
+  fi
+}
 
 function setInstructions {
   chatInstructions="You are in a group chat room.
 You are user <$model>. Answer only as yourself. Do not pretend to be anyone else.
-Be concise in your response. You have only ${TIMEOUT} seconds to complete your response.
+Be concise in your response. You have ${TIMEOUT} seconds to respond.
 To mention other users, use syntax: '@username'.
-You do not have to agree with the other users, use your best judgment to form your own opinions.
-You may steer the conversation to a new topic. Send ONLY the command: /topic <new topic>
-You may leave the chat room if you want to end your participation. Send ONLY the command: /quit <optional reason>
+Use your best judgment to form your own opinions. You do not have to agree with other users.
+You may steer the conversation to a new topic. Send only the command: /topic <new topic>
+You may leave the chat room if you want to end your participation. Send only the command: /quit <optional reason>
 See the chat log below for context.
 The current room topic is:
 ---
@@ -40,31 +47,38 @@ $topic
 
 Chat Log:
 "
+
+  debug "chatInstructions: ${chatInstructions}${context}\n-------"
+}
+
+function validateAndSetArgument {
+  local flag=$1
+  local value=$2
+  local var_name=$3
+  
+  if [ -n "$value" ] && [ ${value:0:1} != "-" ]; then
+    eval "$var_name='$value'"
+    return 0
+  else
+    echo "Error: Argument for $flag is missing" >&2
+    exit 1
+  fi
 }
 
 function parseCommandLine {
   modelsList=""
   resultsDirectory="results"
   topic=""
+  
   while (( "$#" )); do
     case "$1" in
       -m) # specify models to run
-        if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
-          modelsList=$2
-          shift 2
-        else
-          echo "Error: Argument for $1 is missing" >&2
-          exit 1
-        fi
+        validateAndSetArgument "$1" "$2" "modelsList"
+        shift 2
         ;;
       -t) # set timeout
-        if [ -n "$2" ] && [ ${2:0:1} != "-" ]; then
-          TIMEOUT=$2
-          shift 2
-        else
-          echo "Error: Argument for $1 is missing" >&2
-          exit 1
-        fi
+        validateAndSetArgument "$1" "$2" "TIMEOUT"
+        shift 2
         ;;
       -*|--*=) # unsupported flags
         echo "Error: unsupported argument: $1" >&2
@@ -76,6 +90,7 @@ function parseCommandLine {
         ;;
     esac
   done
+  
   # set positional arguments in their proper place
   eval set -- "${topic}"
 }
@@ -115,8 +130,9 @@ function setTopic {
   fi
 
   if [ -t 0 ]; then # Check if input is from a terminal (interactive)
-    echo; echo "Enter topic:";
+    echo "Enter topic:"
     read -r topic # Read topic from user input
+    echo
     return
   fi
 
@@ -127,7 +143,7 @@ function addToContext {
   context+="
 
 $1"
-  echo; echo "$1"
+  echo "$1"; echo;
   context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
 }
 
@@ -170,7 +186,7 @@ function quitChat {
 
   # Check if we still have enough models to continue
   if [ ${#models[@]} -lt 1 ]; then
-    echo; echo "[DEBUG] No models remaining. Chat ending."
+    echo; echo "[SYSTEM] No models remaining. Chat ending."
     exit 0
   fi
 }
@@ -209,29 +225,42 @@ function startRound {
     round[i]=${round[j]}
     round[j]=$temp
   done
+
+  debug "startRound: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')"
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
 
 parseCommandLine "$@"
 setModels
-echo; echo "[DEBUG] ${#models[@]} users in chat: $(modelsList)"
-echo; echo "[DEBUG] TIMEOUT: ${TIMEOUT} seconds"
+
+echo "[SYSTEM] ${#models[@]} models in chat: $(modelsList)";
+echo "[SYSTEM] TIMEOUT: ${TIMEOUT} seconds"
+echo
+
 setTopic
 context="*** Topic: $topic"
-echo; echo "$context"; echo;
+echo "$context"; echo;
+
 startRound
 
 while true; do
+
   model="${round[0]}" # Get first speaker from round
+  debug "model: $model"
+
   round=("${round[@]:1}") # Remove speaker from round
   if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
     startRound
   fi
+  debug "round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
+
+  setInstructions
+
   response=$(runCommandWithTimeout)
   if [ -z "${response}" ]; then
     response="" # "[ERROR: No response from ${model}]"
   fi
   handleCommands && addToContext "<$model> $response"
-  setInstructions
+
 done
