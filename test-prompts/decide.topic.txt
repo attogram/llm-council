@@ -1,0 +1,2 @@
+Decide among yourselves the topic of conversation.
+Once a good topic is chosen, set it with the /topic command.
