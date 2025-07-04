@@ -16,9 +16,9 @@
 #    ./council.sh -t 30
 #
 NAME="llm-council"
-VERSION="2.0"
+VERSION="2.1"
 URL="https://github.com/attogram/llm-council"
-CONTEXT_SIZE="500" # number of lines in the context
+CONTEXT_SIZE="750" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
 DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
 
@@ -35,17 +35,28 @@ RESET=$'\e[0m' # reset terminal colors
 
 prev_bg_toggle=0 # Keep track of alternating background colors
 
-
-echo; echo "$NAME v$VERSION"; echo;
-
-function debug {
+debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
     echo -e "${DEBUG_BACKGROUND}${DEBUG_FOREGROUND}[DEBUG] $1${RESET}"
     echo
   fi
 }
 
-function setInstructions {
+cliHelp() {
+  me=$(basename "$0")
+  echo "$NAME"; echo
+  echo "Usage:"
+  echo "  ./$me [flags]"
+  echo "  ./$me [flags] <prompt>"
+  echo; echo "Flags:";
+
+  echo "  -h     -- Help for $NAME"
+  echo "  -m model1,model2  -- Use specific models (comma separated list)"
+  echo "  -t #   -- Set timeout, in seconds"
+  echo "  -v     -- Show version information"
+}
+
+setInstructions() {
   chatInstructions="You are in a group chat room. You are user <$model>.
 Read the chat log below for context.
 Be concise in your response. You have ${TIMEOUT} seconds to respond.
@@ -61,15 +72,13 @@ $topic
 
 Chat Log:
 "
-
   debug "chatInstructions: ${chatInstructions}${context}\n-------"
 }
 
-function validateAndSetArgument {
+validateAndSetArgument() {
   local flag=$1
   local value=$2
   local var_name=$3
-  
   if [ -n "$value" ] && [ ${value:0:1} != "-" ]; then
     eval "$var_name='$value'"
     return 0
@@ -79,13 +88,16 @@ function validateAndSetArgument {
   fi
 }
 
-function parseCommandLine {
+parseCommandLine() {
   modelsList=""
   resultsDirectory="results"
   topic=""
-  
   while (( "$#" )); do
     case "$1" in
+      -h) # help
+        cliHelp
+        exit
+        ;;
       -m) # specify models to run
         validateAndSetArgument "$1" "$2" "modelsList"
         shift 2
@@ -93,6 +105,10 @@ function parseCommandLine {
       -t) # set timeout
         validateAndSetArgument "$1" "$2" "TIMEOUT"
         shift 2
+        ;;
+      -v) # version
+        echo "$NAME v$VERSION"
+        exit
         ;;
       -*|--*=) # unsupported flags
         echo "Error: unsupported argument: $1" >&2
@@ -104,18 +120,16 @@ function parseCommandLine {
         ;;
     esac
   done
-  
   # set positional arguments in their proper place
   eval set -- "${topic}"
 }
 
-function setModels {
+setModels() {
   models=($(ollama list | awk '{if (NR > 1) print $1}' | sort)) # Get list of models, sorted alphabetically
   if [ -z "$models" ]; then
     echo "No models found. Please install models with 'ollama pull <model-name>'" >&2
     exit 1
   fi
-
   parsedModels=()
   if [ -n "$modelsList" ]; then
     IFS=',' read -ra modelsListArray <<< "$modelsList" # parse csv into modelsListArray
@@ -131,36 +145,31 @@ function setModels {
   if [ -n "$parsedModels" ]; then
     models=("${parsedModels[@]}")
   fi
-  
   if [ ${#models[@]} -lt 1 ]; then
     echo "Error: there must be at least 1 model to chat" >&2
     exit 1
   fi
 }
 
-function setTopic {
+setTopic() {
   if [ -n "$topic" ]; then # if topic is already set from command line
     return
   fi
-
   if [ -t 0 ]; then # Check if input is from a terminal (interactive)
     echo "Enter topic:"
     read -r topic # Read topic from user input
     echo
     return
   fi
-
   topic=$(cat) # Read from standard input (pipe or file)
 }
 
-function addToContext {
+addToContext() {
   # Set up formatting variables
   local formatted=$(echo "$1" | sed '1!s/^/    /g') # From 2nd line onwards, indent every line with 4 spaces
-
   # Add to context without formatting
   context+="\n${formatted}"
   context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
-
   local display_text=""
   # Apply bold formatting to model names at start of lines
   if [[ "$formatted" =~ ^'<'[^'>']+'>' ]]; then
@@ -186,7 +195,7 @@ function addToContext {
   fi
 }
 
-function runCommandWithTimeout {
+runCommandWithTimeout() {
   ollama run "${model}" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null &
   pid=$!
   (
@@ -201,11 +210,11 @@ function runCommandWithTimeout {
   kill $wait_pid 2>/dev/null
 }
 
-function roundList {
+roundList() {
   printf "<%s> " "${round[@]}"
 }
 
-function quitChat {
+quitChat() {
   local model="$1"
   local reason="$2"
   changeNotice="*** $model left the chat"
@@ -213,7 +222,6 @@ function quitChat {
     changeNotice+=": $reason"
   fi
   addToContext "$changeNotice"
-
   # Remove the model from the models array
   local newModels=()
   for m in "${models[@]}"; do
@@ -222,7 +230,6 @@ function quitChat {
     fi
   done
   models=("${newModels[@]}")
-
   # Check if we still have enough models to continue
   if [ ${#models[@]} -lt 1 ]; then
     echo; echo "[SYSTEM] No models remaining. Chat ending."
@@ -230,14 +237,14 @@ function quitChat {
   fi
 }
 
-function setNewTopic {
+setNewTopic() {
   changeNotice="*** $model changed topic to: $1"
   topic="$1"
   setInstructions
   addToContext "$changeNotice"
 }
 
-function handleCommands {
+handleCommands() {
   # Remove leading/trailing whitespace and check if it matches /topic pattern
   local trimmedResponse=$(echo "$response" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
   if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then  
@@ -253,9 +260,8 @@ function handleCommands {
   return 0;
 }
 
-function startRound {
+startRound() {
   round=("${models[@]}")
-
   # shuffle round
   local n=${#round[@]}
   for ((i = n - 1; i > 0; i--)); do
@@ -264,43 +270,32 @@ function startRound {
     round[i]=${round[j]}
     round[j]=$temp
   done
-
   debug "startRound: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')"
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
-
 parseCommandLine "$@"
+echo; echo "$NAME v$VERSION"; echo;
 setModels
-
 startRound
-
 echo "[SYSTEM] ${#models[@]} models in chat: $(roundList)";
-echo "[SYSTEM] TIMEOUT: ${TIMEOUT} seconds"
-echo
-
+echo "[SYSTEM] TIMEOUT: ${TIMEOUT} seconds"; echo
 setTopic
 context=""
 addToContext "*** Topic: $topic"
-#echo "$context"; echo;
 
 while true; do
-
   model="${round[0]}" # Get first speaker from round
   debug "model: $model"
-
   round=("${round[@]:1}") # Remove speaker from round
   if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
     startRound
   fi
   debug "round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
-
   setInstructions
-
   response=$(runCommandWithTimeout)
   if [ -z "${response}" ]; then
     response="" # "[ERROR: No response from ${model}]"
   fi
   handleCommands && addToContext "<$model> $response"
-
 done
