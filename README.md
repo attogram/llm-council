@@ -1,4 +1,6 @@
-# llm-council
+# LLM Council
+
+![Logo](docs/logo/logo.640x320.jpg)
 
 A bash script to start a chat room between all, or some, of your models running on ollama.
 
