@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# llm-council
+# LLM Council
 #
-# A group chat room with all your ollama models, or a selection of your ollama models
+# A group chat room with all your Ollama models, or a selection of your models
 #
 # Usage:
 #
@@ -14,28 +14,26 @@
 #
 #  Set Timeout: (number of seconds to wait for model response)
 #    ./council.sh -t 30
-#
 
 NAME="llm-council"
-VERSION="2.2"
+VERSION="2.3"
 URL="https://github.com/attogram/llm-council"
 
 CONTEXT_SIZE="750" # number of lines in the context
-TIMEOUT="60" # number of seconds to wait for model response
-DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
+DEBUG_MODE=0       # Debug mode. 1 = debug on, 2 = debug off
+TIMEOUT="60"       # number of seconds to wait for model response
 
-# ANSI escape codes
+# Color scheme
 RESPONSE_BACKGROUND_1=$'\e[48;5;250m' # Light grey background color
-RESPONSE_FOREGROUND_1=$'\e[38;5;0m' # Black text color
+RESPONSE_FOREGROUND_1=$'\e[38;5;0m'   # Black text color
 RESPONSE_BACKGROUND_2=$'\e[48;5;245m' # Medium grey background color
-RESPONSE_FOREGROUND_2=$'\e[38;5;0m' # Black text color
-DEBUG_BACKGROUND=$'\e[48;5;240m' # background grey
-DEBUG_FOREGROUND=$'\e[38;5;226m' # foreground yellow
-NORMAL_TEXT=$'\e[22m' # Reset all formatting
-BOLD_TEXT=$'\e[1m' # Bold text
-RESET=$'\e[0m' # reset terminal colors
-
-prev_bg_toggle=0 # Keep track of alternating background colors
+RESPONSE_FOREGROUND_2=$'\e[38;5;0m'   # Black text color
+DEBUG_BACKGROUND=$'\e[48;5;240m'      # background grey
+DEBUG_FOREGROUND=$'\e[38;5;226m'      # foreground yellow
+NORMAL_TEXT=$'\e[22m'                 # Reset all formatting
+BOLD_TEXT=$'\e[1m'                    # Bold text
+RESET=$'\e[0m'                        # reset terminal colors
+prev_bg_toggle=0                      # Keep track of alternating background colors
 
 debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
@@ -49,13 +47,13 @@ usage() {
   echo "$NAME"; echo
   echo "Usage:"
   echo "  ./$me [flags]"
-  echo "  ./$me [flags] <prompt>"
+  echo "  ./$me [flags] [topic]"
   echo; echo "Flags:";
-
-  echo "  -h     -- Help for $NAME"
+  echo "  -h       -- Help for $NAME"
   echo "  -m model1,model2  -- Use specific models (comma separated list)"
-  echo "  -t #   -- Set timeout, in seconds"
-  echo "  -v     -- Show version information"
+  echo "  -t #     -- Set timeout, in seconds"
+  echo "  -v       -- Show version information"
+  echo "  [topic]  -- Set the chat room topic (\"Example topic\")"
 }
 
 setInstructions() {
@@ -98,7 +96,7 @@ parseCommandLine() {
     case "$1" in
       -h) # help
         usage
-        exit
+        exit 0
         ;;
       -m) # specify models to run
         validateAndSetArgument "$1" "$2" "modelsList"
@@ -110,7 +108,7 @@ parseCommandLine() {
         ;;
       -v) # version
         echo "$NAME v$VERSION"
-        exit
+        exit 0
         ;;
       -*|--*=) # unsupported flags
         echo "Error: unsupported argument: $1" >&2
