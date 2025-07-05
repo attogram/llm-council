@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # llm-council
 #
@@ -15,9 +15,11 @@
 #  Set Timeout: (number of seconds to wait for model response)
 #    ./council.sh -t 30
 #
+
 NAME="llm-council"
-VERSION="2.1"
+VERSION="2.2"
 URL="https://github.com/attogram/llm-council"
+
 CONTEXT_SIZE="750" # number of lines in the context
 TIMEOUT="60" # number of seconds to wait for model response
 DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
@@ -42,7 +44,7 @@ debug() {
   fi
 }
 
-cliHelp() {
+usage() {
   me=$(basename "$0")
   echo "$NAME"; echo
   echo "Usage:"
@@ -95,7 +97,7 @@ parseCommandLine() {
   while (( "$#" )); do
     case "$1" in
       -h) # help
-        cliHelp
+        usage
         exit
         ;;
       -m) # specify models to run
@@ -283,7 +285,6 @@ echo "[SYSTEM] TIMEOUT: ${TIMEOUT} seconds"; echo
 setTopic
 context=""
 addToContext "*** Topic: $topic"
-
 while true; do
   model="${round[0]}" # Get first speaker from round
   debug "model: $model"
