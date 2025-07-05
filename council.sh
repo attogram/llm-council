@@ -16,7 +16,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.3"
+VERSION="2.4"
 URL="https://github.com/attogram/llm-council"
 
 CONTEXT_SIZE="750" # number of lines in the context
@@ -24,20 +24,18 @@ DEBUG_MODE=0       # Debug mode. 1 = debug on, 2 = debug off
 TIMEOUT="60"       # number of seconds to wait for model response
 
 # Color scheme
-RESPONSE_BACKGROUND_1=$'\e[48;5;250m' # Light grey background color
-RESPONSE_FOREGROUND_1=$'\e[38;5;0m'   # Black text color
-RESPONSE_BACKGROUND_2=$'\e[48;5;245m' # Medium grey background color
-RESPONSE_FOREGROUND_2=$'\e[38;5;0m'   # Black text color
-DEBUG_BACKGROUND=$'\e[48;5;240m'      # background grey
-DEBUG_FOREGROUND=$'\e[38;5;226m'      # foreground yellow
-NORMAL_TEXT=$'\e[22m'                 # Reset all formatting
-BOLD_TEXT=$'\e[1m'                    # Bold text
-RESET=$'\e[0m'                        # reset terminal colors
-prev_bg_toggle=0                      # Keep track of alternating background colors
+COLOR_RESPONSE_1=$'\e[30m\e[47m' # black text, white background
+COLOR_RESPONSE_2=$'\e[37m\e[40m' # white text, black background
+COLOR_SYSTEM=$'\e[37m\e[44m'     # white text, blue background
+COLOR_DEBUG=$'\e[30m\e[43m'      # black text, yellow background
+TEXT_NORMAL=$'\e[22m'            # Reset all formatting
+TEXT_BOLD=$'\e[1m'               # Bold text
+COLOR_RESET=$'\e[0m'             # Reset terminal colors
+response_toggle=0                 # Track alternating response colors
 
 debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
-    echo -e "${DEBUG_BACKGROUND}${DEBUG_FOREGROUND}[DEBUG] $1${RESET}"
+    echo -e "${COLOR_DEBUG}[DEBUG] $1${COLOR_RESET}"
     echo
   fi
 }
@@ -156,7 +154,7 @@ setTopic() {
     return
   fi
   if [ -t 0 ]; then # Check if input is from a terminal (interactive)
-    echo "Enter topic:"
+    echo "${COLOR_SYSTEM}Enter topic:${COLOR_RESET}"
     read -r topic # Read topic from user input
     echo
     return
@@ -166,31 +164,31 @@ setTopic() {
 
 addToContext() {
   # Set up formatting variables
-  local formatted=$(echo "$1" | sed '1!s/^/    /g') # From 2nd line onwards, indent every line with 4 spaces
+  local message="$1"
   # Add to context without formatting
-  context+="\n${formatted}"
+  context+="\n${message}"
   context=$(echo "$context" | tail -n "$CONTEXT_SIZE") # get most recent $CONTEXT_SIZE lines of chat log
   local display_text=""
   # Apply bold formatting to model names at start of lines
-  if [[ "$formatted" =~ ^'<'[^'>']+'>' ]]; then
+  if [[ "$message" =~ ^'<'[^'>']+'>' ]]; then
     local model_part=${BASH_REMATCH[0]}
-    local rest_of_line=${formatted#$model_part}
-    if [ $prev_bg_toggle -eq 0 ]; then
-      display_text="${RESPONSE_BACKGROUND_1}${BOLD_TEXT}${model_part}${NORMAL_TEXT}${RESPONSE_BACKGROUND_1}${RESPONSE_FOREGROUND_1}${rest_of_line}${RESET}"
-      prev_bg_toggle=1
+    local rest_of_line=${message#$model_part}
+    if [ $response_toggle -eq 0 ]; then
+      display_text="${COLOR_RESPONSE_1}${TEXT_BOLD}${model_part}${TEXT_NORMAL}${COLOR_RESPONSE_1}${rest_of_line}${COLOR_RESET}"
+      response_toggle=1
     else
-      display_text="${RESPONSE_BACKGROUND_2}${BOLD_TEXT}${model_part}${NORMAL_TEXT}${RESPONSE_BACKGROUND_2}${RESPONSE_FOREGROUND_2}${rest_of_line}${RESET}"
-      prev_bg_toggle=0
+      display_text="${COLOR_RESPONSE_2}${TEXT_BOLD}${model_part}${TEXT_NORMAL}${COLOR_RESPONSE_2}${rest_of_line}${COLOR_RESET}"
+      response_toggle=0
     fi
     echo -e "$display_text"
   else
-    # No model part to bold, just apply colors
-    if [ $prev_bg_toggle -eq 0 ]; then
-      echo -e "${RESPONSE_BACKGROUND_1}${RESPONSE_FOREGROUND_1}${formatted}${RESET}"
-      prev_bg_toggle=1
+    # No model part, is system message
+    if [ $response_toggle -eq 0 ]; then
+      echo -e "${COLOR_SYSTEM}${message}${COLOR_RESET}"
+      response_toggle=1
     else
-      echo -e "${RESPONSE_BACKGROUND_2}${RESPONSE_FOREGROUND_2}${formatted}${RESET}"
-      prev_bg_toggle=0
+      echo -e "${COLOR_SYSTEM}${message}${COLOR_RESET}"
+      response_toggle=0
     fi
   fi
 }
@@ -217,7 +215,7 @@ roundList() {
 quitChat() {
   local model="$1"
   local reason="$2"
-  changeNotice="*** $model left the chat"
+  changeNotice="*** <$model> left the chat"
   if [ -n "$reason" ]; then
     changeNotice+=": $reason"
   fi
@@ -232,13 +230,13 @@ quitChat() {
   models=("${newModels[@]}")
   # Check if we still have enough models to continue
   if [ ${#models[@]} -lt 1 ]; then
-    echo; echo "[SYSTEM] No models remaining. Chat ending."
+    echo; echo "${COLOR_SYSTEM}[SYSTEM] No models remaining. Chat ending.${COLOR_RESET}"
     exit 0
   fi
 }
 
 setNewTopic() {
-  changeNotice="*** $model changed topic to: $1"
+  changeNotice="*** <$model> changed topic to: $1"
   topic="$1"
   setInstructions
   addToContext "$changeNotice"
@@ -275,11 +273,11 @@ startRound() {
 
 export OLLAMA_MAX_LOADED_MODELS=1
 parseCommandLine "$@"
-echo; echo "$NAME v$VERSION"; echo;
+echo; echo "${COLOR_SYSTEM}$NAME v$VERSION${COLOR_RESET}"; echo;
 setModels
 startRound
-echo "[SYSTEM] ${#models[@]} models in chat: $(roundList)";
-echo "[SYSTEM] TIMEOUT: ${TIMEOUT} seconds"; echo
+echo "${COLOR_SYSTEM}[SYSTEM] ${#models[@]} models in chat: $(roundList)${COLOR_RESET}";
+echo "${COLOR_SYSTEM}[SYSTEM] TIMEOUT: ${TIMEOUT} seconds${COLOR_RESET}"; echo
 setTopic
 context=""
 addToContext "*** Topic: $topic"
