@@ -21,7 +21,7 @@ URL="https://github.com/attogram/llm-council"
 
 CONTEXT_SIZE="1000" # number of lines in the context
 DEBUG_MODE=0        # Debug mode. 1 = debug on, 2 = debug off
-TIMEOUT="60"        # number of seconds to wait for model response
+TIMEOUT="20"        # number of seconds to wait for model response
 
 # Color scheme
 COLOR_RESPONSE_1=$'\e[30m\e[47m' # black text, white background
@@ -35,8 +35,7 @@ response_toggle=0                # Track alternating response colors
 
 debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
-    echo -e "${COLOR_DEBUG}[DEBUG] $1${COLOR_RESET}"
-    echo
+    echo -e "${COLOR_DEBUG}[DEBUG][$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
   fi
 }
 
@@ -56,17 +55,11 @@ usage() {
 
 setInstructions() {
   chatInstructions="You are in a group chat room. You are user <$model>.
-Read the chat log below for context.
-Be concise in your response. You have ${TIMEOUT} seconds to respond.
-To mention other users, use syntax: '@username'.
-Use your best judgment to form your own opinions. You do not have to agree with other users.
-You may steer the conversation to a new topic. Send only the command: /topic <new topic>
-You may leave the chat room if you want to end your participation. Send only the command: /quit <optional reason>
-
-The current room topic is:
----
-$topic
----
+Review the Chat Log below, then respond to the group.
+You MUST limit your response to 100 words or less. Be concise.
+If mentioning other users, you MUST use syntax: @username.
+To set a new topic, send ONLY the command: /topic <new topic>
+To leave the chat room, send ONLY the command: /quit <optional reason>
 
 Chat Log:
 "
@@ -268,7 +261,7 @@ startRound() {
     round[i]=${round[j]}
     round[j]=$temp
   done
-  debug "startRound: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')"
+  debug "startRound: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
@@ -290,12 +283,11 @@ context=""
 addToContext "*** Topic: $topic"
 while true; do
   model="${round[0]}" # Get first speaker from round
-  debug "model: $model"
   round=("${round[@]:1}") # Remove speaker from round
   if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
     startRound
   fi
-  debug "round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
+  debug "model: <$model>, round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
   response=$(runCommandWithTimeout)
   if [ -z "${response}" ]; then
