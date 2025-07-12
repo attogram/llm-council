@@ -191,7 +191,7 @@ runCommandWithTimeout() {
   pid=$!
   (
     sleep "$TIMEOUT"
-    debug "[ERROR: Session Timeout after ${TIMEOUT} seconds]"
+    echo "[ERROR: <$model> Timeout after ${TIMEOUT} seconds]"
     if kill -0 $pid 2>/dev/null; then
       kill $pid 2>/dev/null
     fi
@@ -291,7 +291,7 @@ while true; do
   setInstructions
   response=$(runCommandWithTimeout)
   if [ -z "${response}" ]; then
-    response="" # "[ERROR: No response from ${model}]"
+    response="[ERROR: No response from <${model}>]"
   fi
   handleCommands && addToContext "<$model> $response"
 done
