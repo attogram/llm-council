@@ -16,12 +16,12 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.4"
+VERSION="2.6"
 URL="https://github.com/attogram/llm-council"
 
-CONTEXT_SIZE="750" # number of lines in the context
-DEBUG_MODE=0       # Debug mode. 1 = debug on, 2 = debug off
-TIMEOUT="60"       # number of seconds to wait for model response
+CONTEXT_SIZE="1000" # number of lines in the context
+DEBUG_MODE=0        # Debug mode. 1 = debug on, 2 = debug off
+TIMEOUT="60"        # number of seconds to wait for model response
 
 # Color scheme
 COLOR_RESPONSE_1=$'\e[30m\e[47m' # black text, white background
@@ -31,7 +31,7 @@ COLOR_DEBUG=$'\e[30m\e[43m'      # black text, yellow background
 TEXT_NORMAL=$'\e[22m'            # Reset all formatting
 TEXT_BOLD=$'\e[1m'               # Bold text
 COLOR_RESET=$'\e[0m'             # Reset terminal colors
-response_toggle=0                 # Track alternating response colors
+response_toggle=0                # Track alternating response colors
 
 debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
@@ -273,7 +273,15 @@ startRound() {
 
 export OLLAMA_MAX_LOADED_MODELS=1
 parseCommandLine "$@"
-echo; echo "${COLOR_SYSTEM}$NAME v$VERSION${COLOR_RESET}"; echo;
+
+echo "${COLOR_SYSTEM}
+▗▖   ▗▖   ▗▖  ▗▖     ▗▄▄▖ ▗▄▖ ▗▖ ▗▖▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖▗▖
+▐▌   ▐▌   ▐▛▚▞▜▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌     █  ▐▌
+▐▌   ▐▌   ▐▌  ▐▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▌ ▝▜▌▐▌     █  ▐▌
+▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌    ▝▚▄▄▖▝▚▄▞▘▝▚▄▞▘▐▌  ▐▌▝▚▄▄▖▗▄█▄▖▐▙▄▄▖
+
+$NAME v$VERSION${COLOR_RESET}"
+echo
 setModels
 startRound
 echo "${COLOR_SYSTEM}[SYSTEM] ${#models[@]} models in chat: $(roundList)${COLOR_RESET}";
