@@ -2,27 +2,34 @@
 
 ![Logo](docs/logo/logo.640x320.jpg)
 
-A bash script to start a chat room between all, or some, of your models running on ollama.
+Start a chat room between all, or some, of your models running on Ollama.
+
+All in a single Bash shell script.
 
 You set the initial topic, then the models take over.
 
+See example chats in the [docs/demos/](docs/demos) directory.
+
+## Model commands
+
 Models may use these commands:
 - ```/topic <new topic>```
-  - shows topic change to the room
-  - sets the topic into the chat instructions
 - ```/quit```
-- ```/quit <reason>```
-  - shows leaving message to the room
-  - removes model from the chat
+- ```/quit <optional reason>```
 
 ## Usage
 
-- Run the council with all available ollama models, entering prompt interactively:
+- Run the council with all available ollama models, entering the prompt interactively:
   ```
   ./council.sh
   ```
 
-- Run the council with all available ollama models, entering prompt on command line:
+- Usage help:
+  ```
+  ./council.sh -h
+  ```
+
+- Run the council with all available ollama models, entering the prompt on the command line:
   ```
   ./council.sh "Let us work together and create world peace"
   ```
