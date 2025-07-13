@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.10"
+VERSION="2.11"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -323,9 +323,9 @@ setModels
 startRound
 systemMessage "${#models[@]} models in the group chat room:"
 systemMessage "$(printf "<%s> " "${round[@]}")"
-systemMessage "TIMEOUT: ${TIMEOUT} seconds"
-systemMessage "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
-systemMessage "TEXT_WRAP: ${TEXT_WRAP}${COLOR_RESET}"
+debug "TIMEOUT: ${TIMEOUT} seconds"
+debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
+debug "TEXT_WRAP: ${TEXT_WRAP}${COLOR_RESET}"
 echo
 setTopic
 context=""
