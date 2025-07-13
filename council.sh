@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.13"
+VERSION="2.14"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -67,11 +67,11 @@ yesColors() {
   COLOR_RESPONSE_1=$'\e[37m\e[48;5;233m' # white text, dark grey background
   COLOR_RESPONSE_2=$'\e[37m\e[40m'  # white text, black background
   COLOR_SYSTEM=$'\e[37m\e[48;5;17m' # white text, dark blue background
-  COLOR_DEBUG=$'\e[30m\e[43m'      # black text, yellow background
-  TEXT_NORMAL=$'\e[22m'            # Normal style text
-  TEXT_BOLD=$'\e[1m'               # Bold style text
-  COLOR_RESET=$'\e[0m'             # Reset terminal colors
-  response_toggle=0                # Track alternating response colors
+  COLOR_DEBUG=$'\e[30m\e[43m'       # black text, yellow background
+  TEXT_NORMAL=$'\e[22m'             # Normal style text
+  TEXT_BOLD=$'\e[1m'                # Bold style text
+  COLOR_RESET=$'\e[0m'              # Reset terminal colors
+  response_toggle=0                 # Track alternating response colors
 }
 
 noColors() {
