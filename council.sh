@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.9"
+VERSION="2.10"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -218,7 +218,7 @@ addToContext() {
   local message="$1"
   context+="\n${message}" # Add raw message to context
   context=$(echo "$context" | tail -n "$CHAT_LOG_LINES") # get most recent $CHAT_LOG_LINES lines of chat log
-  echo -e "$context" > ./messages.txt # save messages
+  echo -e "$context" > ./messages.txt # LOGGING: save messages
   displayContextAdded "$message"
 }
 
@@ -247,10 +247,6 @@ runCommandWithTimeout() {
   kill $wait_pid 2>/dev/null
 }
 
-roundList() {
-  printf "<%s> " "${round[@]}"
-}
-
 quitChat() {
   local model="$1"
   local reason="$2"
@@ -275,10 +271,7 @@ quitChat() {
 }
 
 setNewTopic() {
-  changeNotice="*** <$model> changed topic to: $1"
-  topic="$1"
-  setInstructions
-  addToContext "$changeNotice"
+  addToContext "*** <$model> changed topic to: $1"
 }
 
 handleCommands() {
@@ -329,7 +322,7 @@ echo
 setModels
 startRound
 systemMessage "${#models[@]} models in the group chat room:"
-systemMessage "$(roundList)"
+systemMessage "$(printf "<%s> " "${round[@]}")"
 systemMessage "TIMEOUT: ${TIMEOUT} seconds"
 systemMessage "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
 systemMessage "TEXT_WRAP: ${TEXT_WRAP}${COLOR_RESET}"
@@ -337,6 +330,7 @@ echo
 setTopic
 context=""
 addToContext "*** Topic: $topic"
+setInstructions; echo -e "$chatInstructions" > ./instructions.txt # LOGGING: save chat instructions
 while true; do
   model="${round[0]}" # Get first speaker from round
   round=("${round[@]:1}") # Remove speaker from round
@@ -346,9 +340,7 @@ while true; do
   debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
   response=$(runCommandWithTimeout)
-  #debug "Raw response=$response"
   response=$(removeThinking "$response")
-  #debug "Post response=$response"
   stopModel "$model"
   if [ -z "${response}" ]; then
     debug "[ERROR] No response from <${model}> within $TIMEOUT seconds"
