@@ -19,10 +19,10 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.7"
+VERSION="2.8"
 URL="https://github.com/attogram/llm-council"
 
-CHAT_LOG_NUMBER_OF_LINES="1000" # number of lines in the chat log
+CHAT_LOG_NUMBER_OF_LINES="500" # number of lines in the chat log
 DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
 TIMEOUT=20   # number of seconds to wait for model response
 TEXT_WRAP=0  # Text wrap. 0 = no wrap, >0 = wrap line
@@ -39,13 +39,17 @@ usage() {
   echo "  -t #             -- Set timeout to # seconds"
   echo "  -wrap #          -- Text wrap to # characters per line"
   echo "  [topic]          -- Set the chat room topic (\"Example topic\")"
+  echo "  -d               -- Debug Mode"
   echo "  -v               -- Show version information"
   echo "  -h               -- Help for $NAME"
 }
 
 debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
-    echo -e "${COLOR_DEBUG}[DEBUG][$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
+    #echo -e "${COLOR_DEBUG}[DEBUG][$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
+    echo
+    echo -e "[DEBUG] [$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo
   fi
 }
 
@@ -67,8 +71,8 @@ yesColors() {
   COLOR_RESPONSE_2=$'\e[37m\e[40m' # white text, black background
   COLOR_SYSTEM=$'\e[37m\e[44m'     # white text, blue background
   COLOR_DEBUG=$'\e[30m\e[43m'      # black text, yellow background
-  TEXT_NORMAL=$'\e[22m'            # Reset all formatting
-  TEXT_BOLD=$'\e[1m'               # Bold text
+  TEXT_NORMAL=$'\e[22m'            # Normal style text
+  TEXT_BOLD=$'\e[1m'               # Bold style text
   COLOR_RESET=$'\e[0m'             # Reset terminal colors
   response_toggle=0                # Track alternating response colors
 }
@@ -102,6 +106,10 @@ parseCommandLine() {
   topic=""
   while (( "$#" )); do
     case "$1" in
+      -d) # Debug Mode
+        DEBUG_MODE=1
+        shift
+        ;;
       -h) # help
         usage
         exit 0
@@ -180,6 +188,14 @@ setTopic() {
   topic=$(cat) # Read from standard input (pipe or file)
 }
 
+systemMessage() {
+  if [ ""$TEXT_WRAP -ge 1 ]; then
+    echo -e "$1" | fold -s -w "$TEXT_WRAP"
+  else
+    echo -e "$1"
+  fi
+}
+
 addToContext() {
   # Set up formatting variables
   local message="$1"
@@ -208,11 +224,7 @@ addToContext() {
       response_toggle=0
     fi
   fi
-  if [ ""$TEXT_WRAP -ge 1 ]; then
-    echo -e "$display_text" | fold -s -w "$TEXT_WRAP"
-  else
-    echo -e "$display_text"
-  fi
+  systemMessage "$display_text"
 }
 
 runCommandWithTimeout() {
@@ -220,7 +232,7 @@ runCommandWithTimeout() {
   pid=$!
   (
     sleep "$TIMEOUT"
-    echo "[ERROR: <$model> Timed out after ${TIMEOUT} seconds]"
+    #systemMessage "[ERROR] <$model> Timed out after ${TIMEOUT} seconds"
     if kill -0 $pid 2>/dev/null; then
       kill $pid 2>/dev/null
     fi
@@ -293,14 +305,6 @@ startRound() {
   debug "startRound: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
 }
 
-systemMessage() {
-  if [ ""$TEXT_WRAP -ge 1 ]; then
-    echo -e "$1" | fold -s -w "$TEXT_WRAP"
-  else
-    echo -e "$1"
-  fi
-}
-
 export OLLAMA_MAX_LOADED_MODELS=1
 yesColors
 parseCommandLine "$@"
@@ -309,14 +313,15 @@ echo "${COLOR_SYSTEM}
 ▐▌   ▐▌   ▐▛▚▞▜▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌     █  ▐▌
 ▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌    ▝▚▄▄▖▝▚▄▞▘▝▚▄▞▘▐▌ ▝▜▌▝▚▄▄▖▗▄█▄▖▐▙▄▄▖
 
-$NAME v$VERSION${COLOR_RESET}"
+$NAME v$VERSION"
 echo
 setModels
 startRound
-systemMessage "${COLOR_SYSTEM}[SYSTEM] ${#models[@]} models in chat: $(roundList)"
-systemMessage "[SYSTEM] TIMEOUT: ${TIMEOUT} seconds"
-systemMessage "[SYSTEM] CHAT_LOG_NUMBER_OF_LINES: ${CHAT_LOG_NUMBER_OF_LINES}"
-systemMessage "[SYSTEM] TEXT_WRAP: ${TEXT_WRAP}${COLOR_RESET}"
+systemMessage "${#models[@]} models in the group chat room:"
+systemMessage "$(roundList)"
+systemMessage "TIMEOUT: ${TIMEOUT} seconds"
+systemMessage "CHAT_LOG_NUMBER_OF_LINES: ${CHAT_LOG_NUMBER_OF_LINES}"
+systemMessage "TEXT_WRAP: ${TEXT_WRAP}${COLOR_RESET}"
 echo
 setTopic
 context=""
@@ -331,7 +336,8 @@ while true; do
   setInstructions
   response=$(runCommandWithTimeout)
   if [ -z "${response}" ]; then
-    response="[ERROR: No response from <${model}>]"
+    systemMessage "${COLOR_SYSTEM}[ERROR] No response from <${model}> within $TIMEOUT seconds${COLOR_RESET}"
+  else
+    handleCommands && addToContext "<$model> $response"
   fi
-  handleCommands && addToContext "<$model> $response"
 done
