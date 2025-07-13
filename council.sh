@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.12"
+VERSION="2.13"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -64,10 +64,8 @@ Chat Log:
 }
 
 yesColors() {
-  #COLOR_RESPONSE_1=$'\e[30m\e[47m' # black text, white background
   COLOR_RESPONSE_1=$'\e[37m\e[48;5;233m' # white text, dark grey background
   COLOR_RESPONSE_2=$'\e[37m\e[40m'  # white text, black background
-  #COLOR_SYSTEM=$'\e[37m\e[44m'     # white text, blue background
   COLOR_SYSTEM=$'\e[37m\e[48;5;17m' # white text, dark blue background
   COLOR_DEBUG=$'\e[30m\e[43m'      # black text, yellow background
   TEXT_NORMAL=$'\e[22m'            # Normal style text
@@ -154,7 +152,7 @@ setModels() {
     exit 1
   fi
   parsedModels=()
-  if [ -n "$modelsList" ]; then
+  if [ -n "$modelsList" ]; then # If user supplied a model list with -m
     IFS=',' read -ra modelsListArray <<< "$modelsList" # parse csv into modelsListArray
     for m in "${modelsListArray[@]}"; do
       if [[ " ${models[*]} " =~ " $m " ]]; then # if model exists
@@ -166,7 +164,9 @@ setModels() {
     done
   fi
   if [ -n "$parsedModels" ]; then
-    models=("${parsedModels[@]}")
+    IFS=$'\n' sortedParsedModels=($(sort <<<"${parsedModels[*]}"))
+    unset IFS
+    models=("${sortedParsedModels[@]}")
   fi
   if [ ${#models[@]} -lt 1 ]; then
     echo "Error: there must be at least 1 model to chat" >&2
@@ -322,9 +322,9 @@ echo "${COLOR_SYSTEM}
 $NAME v$VERSION"
 echo
 setModels
-startRound
 systemMessage "${#models[@]} models in the group chat room:"
-systemMessage "$(printf "<%s> " "${round[@]}")"
+systemMessage "$(printf "<%s> " "${models[@]}")"
+startRound
 debug "TIMEOUT: ${TIMEOUT} seconds"
 debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
 debug "TEXT_WRAP: ${TEXT_WRAP}${COLOR_RESET}"
