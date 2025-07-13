@@ -22,7 +22,7 @@ NAME="llm-council"
 VERSION="2.8"
 URL="https://github.com/attogram/llm-council"
 
-CHAT_LOG_NUMBER_OF_LINES="500" # number of lines in the chat log
+CHAT_LOG_LINES="500" # number of lines in the chat log
 DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
 TIMEOUT=20   # number of seconds to wait for model response
 TEXT_WRAP=0  # Text wrap. 0 = no wrap, >0 = wrap line
@@ -39,17 +39,14 @@ usage() {
   echo "  -t #             -- Set timeout to # seconds"
   echo "  -wrap #          -- Text wrap to # characters per line"
   echo "  [topic]          -- Set the chat room topic (\"Example topic\")"
-  echo "  -d               -- Debug Mode"
+  echo "  -debug           -- Debug Mode"
   echo "  -v               -- Show version information"
   echo "  -h               -- Help for $NAME"
 }
 
 debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
-    #echo -e "${COLOR_DEBUG}[DEBUG][$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
-    echo
-    echo -e "[DEBUG] [$(date '+%Y-%m-%d %H:%M:%S')] $1"
-    echo
+    echo -e "${COLOR_DEBUG}[DEBUG] [$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
   fi
 }
 
@@ -106,31 +103,31 @@ parseCommandLine() {
   topic=""
   while (( "$#" )); do
     case "$1" in
-      -d) # Debug Mode
+      -d|-debug|--debug) # Debug Mode
         DEBUG_MODE=1
         shift
         ;;
-      -h) # help
+      -h|-help|--help) # help
         usage
         exit 0
         ;;
-      -nocolors) # No ANSI Colors
+      -nocolors|--nocolors|-nc) # No ANSI Colors
         noColors
         shift
         ;;
-      -m) # specify models to run
+      -m|-models|--models) # specify models to run
         validateAndSetArgument "$1" "$2" "modelsList"
         shift 2
         ;;
-      -t) # set timeout
+      -t|-timeout|--timeout) # set timeout
         validateAndSetArgument "$1" "$2" "TIMEOUT"
         shift 2
         ;;
-      -v) # version
+      -v|-version|--version) # version
         echo "$NAME v$VERSION"
         exit 0
         ;;
-      -wrap) # wrap lines
+      -wrap|-w) # wrap lines
         validateAndSetArgument "$1" "$2" "TEXT_WRAP"
         shift 2
         ;;
@@ -199,9 +196,8 @@ systemMessage() {
 addToContext() {
   # Set up formatting variables
   local message="$1"
-  # Add to context without formatting
-  context+="\n${message}"
-  context=$(echo "$context" | tail -n "$CHAT_LOG_NUMBER_OF_LINES") # get most recent $CHAT_LOG_NUMBER_OF_LINES lines of chat log
+  context+="\n${message}" # Add raw message to context
+  context=$(echo "$context" | tail -n "$CHAT_LOG_LINES") # get most recent $CHAT_LOG_LINES lines of chat log
   local display_text=""
   if [[ "$message" =~ ^'<'[^'>']+'>' ]]; then #
     local model_part=${BASH_REMATCH[0]}
@@ -215,14 +211,8 @@ addToContext() {
       response_toggle=0
     fi
   else
-    # No model part, is system message
-    if [ $response_toggle -eq 0 ]; then
-      display_text="${COLOR_SYSTEM}${message}${COLOR_RESET}"
-      response_toggle=1
-    else
-      display_text="${COLOR_SYSTEM}${message}${COLOR_RESET}"
-      response_toggle=0
-    fi
+    # No model part, is a system message
+    display_text="${COLOR_SYSTEM}${message}${COLOR_RESET}"
   fi
   systemMessage "$display_text"
 }
@@ -305,6 +295,12 @@ startRound() {
   debug "startRound: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
 }
 
+stopModel() {
+  ollama stop "$1"
+  debug "$(ollama ps)"
+  debug "Stopped model: $1"
+}
+
 export OLLAMA_MAX_LOADED_MODELS=1
 yesColors
 parseCommandLine "$@"
@@ -320,7 +316,7 @@ startRound
 systemMessage "${#models[@]} models in the group chat room:"
 systemMessage "$(roundList)"
 systemMessage "TIMEOUT: ${TIMEOUT} seconds"
-systemMessage "CHAT_LOG_NUMBER_OF_LINES: ${CHAT_LOG_NUMBER_OF_LINES}"
+systemMessage "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
 systemMessage "TEXT_WRAP: ${TEXT_WRAP}${COLOR_RESET}"
 echo
 setTopic
@@ -335,8 +331,9 @@ while true; do
   debug "model: <$model>, round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
   response=$(runCommandWithTimeout)
+  stopModel "$model"
   if [ -z "${response}" ]; then
-    systemMessage "${COLOR_SYSTEM}[ERROR] No response from <${model}> within $TIMEOUT seconds${COLOR_RESET}"
+    debug "[ERROR] No response from <${model}> within $TIMEOUT seconds"
   else
     handleCommands && addToContext "<$model> $response"
   fi
