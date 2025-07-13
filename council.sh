@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.14"
+VERSION="2.15"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -55,8 +55,7 @@ setInstructions() {
 Review the Chat Log below, then respond to the group.
 You MUST limit your response to 100 words or less. Be concise.
 If mentioning other users, you MUST use syntax: @username.
-To set a new topic, send ONLY the command: /topic <new topic>
-To leave the chat room, send ONLY the command: /quit <optional reason>
+To set a new topic, send ONLY the 1 line command: /topic <new topic>
 
 Chat Log:
 "
@@ -282,12 +281,13 @@ handleCommands() {
   if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then  
     setNewTopic "${BASH_REMATCH[1]}"
     return 1;
-  elif [[ "$trimmedResponse" = "/quit" ]]; then
-    quitChat "$model"
-    return 1;
-  elif [[ "$trimmedResponse" =~ ^/quit[[:space:]]+(.+)$ ]]; then
-    quitChat "$model" "${BASH_REMATCH[1]}"
-    return 1;
+# To leave the chat room, send ONLY the command: /quit <optional reason>
+#  elif [[ "$trimmedResponse" = "/quit" ]]; then
+#    quitChat "$model"
+#    return 1;
+#  elif [[ "$trimmedResponse" =~ ^/quit[[:space:]]+(.+)$ ]]; then
+#    quitChat "$model" "${BASH_REMATCH[1]}"
+#    return 1;
   fi
   return 0;
 }
