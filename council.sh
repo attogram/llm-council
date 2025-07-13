@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.8"
+VERSION="2.9"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -60,7 +60,7 @@ To leave the chat room, send ONLY the command: /quit <optional reason>
 
 Chat Log:
 "
-  debug "chatInstructions: ${chatInstructions}${context}\n-------"
+  debug "chatInstructions:\n---\n${chatInstructions}${context}\n---"
 }
 
 yesColors() {
@@ -193,11 +193,8 @@ systemMessage() {
   fi
 }
 
-addToContext() {
-  # Set up formatting variables
+displayContextAdded() {
   local message="$1"
-  context+="\n${message}" # Add raw message to context
-  context=$(echo "$context" | tail -n "$CHAT_LOG_LINES") # get most recent $CHAT_LOG_LINES lines of chat log
   local display_text=""
   if [[ "$message" =~ ^'<'[^'>']+'>' ]]; then #
     local model_part=${BASH_REMATCH[0]}
@@ -217,12 +214,30 @@ addToContext() {
   systemMessage "$display_text"
 }
 
+addToContext() {
+  local message="$1"
+  context+="\n${message}" # Add raw message to context
+  context=$(echo "$context" | tail -n "$CHAT_LOG_LINES") # get most recent $CHAT_LOG_LINES lines of chat log
+  echo -e "$context" > ./messages.txt # save messages
+  displayContextAdded "$message"
+}
+
+removeThinking() {
+  local message="$1"
+  if [[ $message == *"<think>"* ]]; then
+    message=$(echo "$message" | sed '/<think>/,/<\/think>/d')
+  fi
+  if [[ $message == *"Thinking\.\.\."* ]]; then
+    message=$(echo "$message" | sed '/Thinking\.\.\./,/\.\.\.done thinking\./d')
+  fi
+  echo "$message"
+}
+
 runCommandWithTimeout() {
   ollama run "${model}" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null &
   pid=$!
   (
     sleep "$TIMEOUT"
-    #systemMessage "[ERROR] <$model> Timed out after ${TIMEOUT} seconds"
     if kill -0 $pid 2>/dev/null; then
       kill $pid 2>/dev/null
     fi
@@ -328,9 +343,12 @@ while true; do
   if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
     startRound
   fi
-  debug "model: <$model>, round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
+  debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
   response=$(runCommandWithTimeout)
+  #debug "Raw response=$response"
+  response=$(removeThinking "$response")
+  #debug "Post response=$response"
   stopModel "$model"
   if [ -z "${response}" ]; then
     debug "[ERROR] No response from <${model}> within $TIMEOUT seconds"
