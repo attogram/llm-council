@@ -1,3 +1,4 @@
 local/
 .DS_Store
-*.txt
+instructions.txt
+messages.txt
