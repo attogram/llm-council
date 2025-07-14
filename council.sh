@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.16"
+VERSION="2.17"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -254,6 +254,7 @@ runCommandWithTimeout() {
     while kill -0 $pidOllama 2>/dev/null; do # while Ollama is still running
     #while true; do
       key=$(dd bs=1 count=1 <&3 2>/dev/null) # get 1 character of user input
+      #read -r -t 1 -n 1 <&3
       if [[ -n "$key" ]]; then # if got user input
         kill $pidOllamaTimeout $pidOllama 2>/dev/null
         echo "[SYSTEM-KEY-PRESS]"
@@ -298,9 +299,11 @@ setNewTopic() {
 }
 
 handleCommands() {
-  # Remove leading/trailing whitespace and check if it matches /topic pattern
+  local response="$1"
+  # Remove leading/trailing whitespace
   local trimmedResponse=$(echo "$response" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-  if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then  
+  # check if it matches /topic pattern
+  if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then
     setNewTopic "${BASH_REMATCH[1]}"
     return 1;
 # To leave the chat room, send ONLY the command: /quit <optional reason>
@@ -371,8 +374,10 @@ while true; do
     debug "PAUSING CHAT. response: $response"
     echo; echo "Enter user input:"
     read -r userInput
+    debug "USER INPUT: [$userInput]"
     echo
-    handleCommands && addToContext "<user> $userInput"
+    model="user"
+    handleCommands "$userInput" && addToContext "<user> $userInput"
     continue
   fi
   response=$(removeThinking "$response")
@@ -380,7 +385,7 @@ while true; do
   if [ -z "${response}" ]; then
     debug "[ERROR] No response from <${model}> within $TIMEOUT seconds"
   else
-    handleCommands && addToContext "<$model> $response"
+    handleCommands "$response" && addToContext "<$model> $response"
   fi
   round=("${round[@]:1}") # Remove speaker from round
   if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
