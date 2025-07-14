@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.17"
+VERSION="2.18"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -46,7 +46,7 @@ usage() {
 
 debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
-    echo -e "${COLOR_DEBUG}[DEBUG] [$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
+    >&2 echo -e "${COLOR_DEBUG}[DEBUG] [$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
   fi
 }
 
@@ -235,40 +235,78 @@ removeThinking() {
 }
 
 runCommandWithTimeout() {
+  debug "runCommandWithTimeout: start"
+  debug "runCommandWithTimeout: main PID: $$"
+
   (
+    debug "runCommandWithTimeout: ollama run: start"
     ollama run "${model}" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null
+    debug "runCommandWithTimeout: ollama run: end"
   ) &
   pidOllama=$!
+  debug "runCommandWithTimeout: pidOllama=$pidOllama"
 
   (
+    debug "runCommandWithTimeout: ollama timeout watch: sleep $TIMEOUT start"
     sleep "$TIMEOUT"
+    debug "runCommandWithTimeout: ollama timeout watch: sleep $TIMEOUT done"
     if kill -0 $pidOllama 2>/dev/null; then
+      debug "runCommandWithTimeout: ollama timeout watch: kill $pidOllama pidOllama"
       kill $pidOllama 2>/dev/null
+      debug "runCommandWithTimeout: ollama timeout watch: kill $pidKeyPress pidKeyPress"
+      kill $pidKeyPress 2>/dev/null
     fi
+    debug "runCommandWithTimeout: ollama timeout watch: end"
   ) &
   pidOllamaTimeout=$!
+  debug "runCommandWithTimeout: pidOllamaTimeout=$pidOllamaTimeout"
 
   (
+    debug "runCommandWithTimeout: keypress watch: start"
     exec 3</dev/tty
     stty -echo -icanon <&3
+    debug "runCommandWithTimeout: keypress watch: while loop: start"
     while kill -0 $pidOllama 2>/dev/null; do # while Ollama is still running
-    #while true; do
+      debug "runCommandWithTimeout: keypress watch: key=dd call"
       key=$(dd bs=1 count=1 <&3 2>/dev/null) # get 1 character of user input
-      #read -r -t 1 -n 1 <&3
+      debug "runCommandWithTimeout: keypress watch: while loop: key=[$key]"
       if [[ -n "$key" ]]; then # if got user input
-        kill $pidOllamaTimeout $pidOllama 2>/dev/null
-        echo "[SYSTEM-KEY-PRESS]"
+        debug "runCommandWithTimeout: keypress watch: while loop: echo [SYSTEM-KEY-PRESS]"
+        echo -n "[SYSTEM-KEY-PRESS]"
+        >&2 echo "[Please wait for your turn.  <$model> is currently typing...]"
+
+        debug "runCommandWithTimeout: while loop: kill $pidOllamaTimeout pidOllamaTimeout"
+        kill $pidOllamaTimeout 2>/dev/null
+        debug "runCommandWithTimeout: while loop: kill $pidOllama pidOllama"
+        kill $pidOllama 2>/dev/null
+
         break
       fi
+      debug "runCommandWithTimeout: keypress watch: sleep 0.1"
       sleep 0.1
     done
+    debug "runCommandWithTimeout: keypress watch: while loop: end"
     stty echo icanon <&3
     exec 3<&-
+    debug "runCommandWithTimeout: keypress watch: end"
   ) &
   pidKeyPress=$!
+  debug "runCommandWithTimeout: pidKeyPress=$pidKeyPress"
 
+  #debug "runCommandWithTimeout: ps: $(ps)"
+
+  debug "runCommandWithTimeout: wait $pidOllama pidOllama"
   wait $pidOllama 2>/dev/null
-  kill $pidOllamaTimeout $pidKeyPress 2>/dev/null
+
+  #debug "runCommandWithTimeout: ps: $(ps)"
+
+  debug "runCommandWithTimeout: kill $pidOllamaTimeout pidOllamaTimeout"
+  kill $pidOllamaTimeout 2>/dev/null
+  debug "runCommandWithTimeout: kill $pidKeyPress pidKeyPress"
+  kill $pidKeyPress 2>/dev/null
+
+  #debug "runCommandWithTimeout: ps: $(ps)"
+  debug "runCommandWithTimeout: end"
 }
 
 quitChat() {
@@ -369,9 +407,12 @@ while true; do
   model="${round[0]}" # Get first speaker from round
   debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
+  debug "calling: runCommandWithTimeout"
   response=$(runCommandWithTimeout)
+  debug "called: runCommandWithTimeout"
+  debug "checking for [SYSTEM-KEY-PRESS]"
   if [[ "$response" == *"[SYSTEM-KEY-PRESS]"* ]]; then
-    debug "PAUSING CHAT. response: $response"
+    debug "PAUSING CHAT. model=$model response: $response"
     echo; echo "Enter user input:"
     read -r userInput
     debug "USER INPUT: [$userInput]"
@@ -380,6 +421,7 @@ while true; do
     handleCommands "$userInput" && addToContext "<user> $userInput"
     continue
   fi
+  debug "removeThinking"
   response=$(removeThinking "$response")
   stopModel "$model"
   if [ -z "${response}" ]; then
