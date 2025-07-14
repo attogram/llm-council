@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.15"
+VERSION="2.16"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -59,7 +59,7 @@ To set a new topic, send ONLY the 1 line command: /topic <new topic>
 
 Chat Log:
 "
-  debug "chatInstructions:\n---\n${chatInstructions}${context}\n---"
+  #debug "chatInstructions:\n---\n${chatInstructions}${context}\n---"
 }
 
 yesColors() {
@@ -235,17 +235,39 @@ removeThinking() {
 }
 
 runCommandWithTimeout() {
-  ollama run "${model}" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null &
-  pid=$!
+  (
+    ollama run "${model}" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null
+  ) &
+  pidOllama=$!
+
   (
     sleep "$TIMEOUT"
-    if kill -0 $pid 2>/dev/null; then
-      kill $pid 2>/dev/null
+    if kill -0 $pidOllama 2>/dev/null; then
+      kill $pidOllama 2>/dev/null
     fi
   ) &
-  wait_pid=$!
-  wait $pid 2>/dev/null
-  kill $wait_pid 2>/dev/null
+  pidOllamaTimeout=$!
+
+  (
+    exec 3</dev/tty
+    stty -echo -icanon <&3
+    while kill -0 $pidOllama 2>/dev/null; do # while Ollama is still running
+    #while true; do
+      key=$(dd bs=1 count=1 <&3 2>/dev/null) # get 1 character of user input
+      if [[ -n "$key" ]]; then # if got user input
+        kill $pidOllamaTimeout $pidOllama 2>/dev/null
+        echo "[SYSTEM-KEY-PRESS]"
+        break
+      fi
+      sleep 0.1
+    done
+    stty echo icanon <&3
+    exec 3<&-
+  ) &
+  pidKeyPress=$!
+
+  wait $pidOllama 2>/dev/null
+  kill $pidOllamaTimeout $pidKeyPress 2>/dev/null
 }
 
 quitChat() {
@@ -311,6 +333,13 @@ stopModel() {
   debug "Stopped model: $1"
 }
 
+#trap exitCleanup INT
+#
+#function exitCleanup() {
+#  echo; echo "Ending Chat."
+#  exit
+#}
+
 export OLLAMA_MAX_LOADED_MODELS=1
 yesColors
 parseCommandLine "$@"
@@ -335,18 +364,26 @@ addToContext "*** Topic: $topic"
 setInstructions; echo -e "$chatInstructions" > ./instructions.txt # LOGGING: save chat instructions
 while true; do
   model="${round[0]}" # Get first speaker from round
-  round=("${round[@]:1}") # Remove speaker from round
-  if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
-    startRound
-  fi
   debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
   response=$(runCommandWithTimeout)
+  if [[ "$response" == *"[SYSTEM-KEY-PRESS]"* ]]; then
+    debug "PAUSING CHAT. response: $response"
+    echo; echo "Enter user input:"
+    read -r userInput
+    echo
+    handleCommands && addToContext "<user> $userInput"
+    continue
+  fi
   response=$(removeThinking "$response")
   stopModel "$model"
   if [ -z "${response}" ]; then
     debug "[ERROR] No response from <${model}> within $TIMEOUT seconds"
   else
     handleCommands && addToContext "<$model> $response"
+  fi
+  round=("${round[@]:1}") # Remove speaker from round
+  if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
+    startRound
   fi
 done
