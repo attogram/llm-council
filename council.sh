@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.18"
+VERSION="2.19"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -412,6 +412,10 @@ while true; do
   debug "called: runCommandWithTimeout"
   debug "checking for [SYSTEM-KEY-PRESS]"
   if [[ "$response" == *"[SYSTEM-KEY-PRESS]"* ]]; then
+    modelResponse=$(echo "$response" | sed 's/\[SYSTEM-KEY-PRESS\]//')
+    if [ -n "$modelResponse" ]; then
+      handleCommands "$modelResponse" && addToContext "<$model> $modelResponse"
+    fi
     debug "PAUSING CHAT. model=$model response: $response"
     echo; echo "Enter user input:"
     read -r userInput
