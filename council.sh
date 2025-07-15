@@ -9,7 +9,7 @@
 #   See the usage help  : ./council.sh -h
 
 NAME="llm-council"
-VERSION="2.22"
+VERSION="2.23"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES=500 # number of lines in the chat log
@@ -396,7 +396,8 @@ userReply() {
   model="user"
   local userMessage=""
   echo -n "${COLOR_SYSTEM}<$model>${COLOR_RESET} "
-  read userMessage
+  read userMessage < /dev/tty
+  echo -ne "\033[A\r\033[K" # move 1 line u p and clear line
   if [ -n "$userMessage" ]; then
     handleCommands "$userMessage" && addToContext "<$model> $userMessage"
   else
