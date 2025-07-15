@@ -2,30 +2,23 @@
 #
 # LLM Council
 #
-# A group chat room with all your Ollama models, or a selection of your models
+# Start a chat room between all, or some, of your models running on Ollama.
 #
 # Usage:
-#
-#  Use all models:
-#    ./council.sh
-#
-#  See usage help:
-#    ./council.sh -h
-#
-#  Specify which models to use:
-#    ./council.sh -m model1,model2,model3
-#
-#  Set Timeout: (number of seconds to wait for model response)
-#    ./council.sh -t 30
+#   Chat with all models: ./council.sh
+#   See the usage help  : ./council.sh -h
 
 NAME="llm-council"
-VERSION="2.20"
+VERSION="2.21"
 URL="https://github.com/attogram/llm-council"
 
-CHAT_LOG_LINES="500" # number of lines in the chat log
+CHAT_LOG_LINES=500 # number of lines in the chat log
 DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
-TIMEOUT=20   # number of seconds to wait for model response
-TEXT_WRAP=0  # Text wrap. 0 = no wrap, >0 = wrap line
+TIMEOUT=20 # number of seconds to wait for model response
+TEXT_WRAP=0 # Text wrap. 0 = no wrap, >0 = wrap line
+TIME_STAMP=0 # Time Stamps for every message. 0 = no, 1 = yes
+MESSAGE_LIMIT=200 # Word limit for messages, suggested to models in the Chat Instructions
+CHAT_MODE="nouser" # Chat mode: nouser, reply, yesuser
 
 usage() {
   me=$(basename "$0")
@@ -35,27 +28,31 @@ usage() {
   echo "  ./$me [flags] [topic]"
   echo; echo "Flags:";
   echo "  -m model1,model2 -- Use specific models (comma separated list)"
-  echo "  -nocolors        -- Do not use ANSI colors"
+  echo "  -nouser          -- Chat Mode: Chat only between models, no user messages (Default)"
+  echo "  -reply           -- Chat Mode: Always allow user to respond to every model message"
+#  echo "  -yesuser         -- Chat Mode: User can send messages upon keypress"
   echo "  -t #             -- Set timeout to # seconds"
+  echo "  -timestamp       -- Show Date and time for every message"
   echo "  -wrap #          -- Text wrap to # characters per line"
-  echo "  [topic]          -- Set the chat room topic (\"Example topic\")"
+  echo "  -nocolors        -- Do not use ANSI colors"
   echo "  -debug           -- Debug Mode"
   echo "  -v               -- Show version information"
   echo "  -h               -- Help for $NAME"
+  echo "  [topic]          -- Set the chat room topic (\"Example topic\")"
 }
 
 debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
-    >&2 echo -e "${COLOR_DEBUG}[DEBUG] [$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
+    >&2 echo -e "${COLOR_DEBUG}[$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
   fi
 }
 
 setInstructions() {
   chatInstructions="You are in a group chat room. You are user <$model>.
-Review the Chat Log below, then respond to the group.
-You MUST limit your response to 100 words or less. Be concise.
+You MUST limit your response to $MESSAGE_LIMIT words or less. Be concise.
 If mentioning other users, you MUST use syntax: @username.
 To set a new topic, send ONLY the 1 line command: /topic <new topic>
+Review the Chat Log below, then respond to the group.
 
 Chat Log:
 "
@@ -110,6 +107,18 @@ parseCommandLine() {
         usage
         exit 0
         ;;
+      -nouser) # Chat mode: no user
+        CHAT_MODE="nouser"
+        shift
+        ;;
+      -yesuser) # Chat mode: user anytime
+        CHAT_MODE="yesuser"
+        shift
+        ;;
+      -reply) # Chat mode: user reply after every model message
+        CHAT_MODE="reply"
+        shift
+        ;;
       -nocolors|--nocolors|-nc) # No ANSI Colors
         noColors
         shift
@@ -121,6 +130,10 @@ parseCommandLine() {
       -t|-timeout|--timeout) # set timeout
         validateAndSetArgument "$1" "$2" "TIMEOUT"
         shift 2
+        ;;
+      -timestamp|-timestamps|-ts) # show timestamps
+        TIME_STAMP=1
+        shift
         ;;
       -v|-version|--version) # version
         echo "$NAME v$VERSION"
@@ -215,11 +228,18 @@ displayContextAdded() {
   systemMessage "$display_text"
 }
 
+showTimestamp() {
+  if [ "$TIME_STAMP" -eq 1 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] "
+  fi
+}
+
 addToContext() {
   local message="$1"
-  context+="\n${message}" # Add raw message to context
+  context+="\n$(showTimestamp)${message}" # Add raw message to context
   context=$(echo "$context" | tail -n "$CHAT_LOG_LINES") # get most recent $CHAT_LOG_LINES lines of chat log
   echo -e "$context" > ./messages.txt # LOGGING: save messages
+  echo -n "$(showTimestamp)"
   displayContextAdded "$message"
 }
 
@@ -235,9 +255,7 @@ removeThinking() {
 }
 
 runCommandWithTimeout() {
-  debug "runCommandWithTimeout: start"
-  debug "runCommandWithTimeout: main PID: $$"
-
+  #debug "runCommandWithTimeout: start"
   (
     debug "runCommandWithTimeout: ollama run: start"
     ollama run "${model}" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null
@@ -247,7 +265,7 @@ runCommandWithTimeout() {
   debug "runCommandWithTimeout: pidOllama=$pidOllama"
 
   (
-    debug "runCommandWithTimeout: ollama timeout watch: sleep $TIMEOUT start"
+    debug "runCommandWithTimeout: ollama timeout watch: start: TIMEOUT=$TIMEOUT"
     sleep "$TIMEOUT"
     debug "runCommandWithTimeout: ollama timeout watch: sleep $TIMEOUT done"
     if kill -0 $pidOllama 2>/dev/null; then
@@ -261,49 +279,49 @@ runCommandWithTimeout() {
   pidOllamaTimeout=$!
   debug "runCommandWithTimeout: pidOllamaTimeout=$pidOllamaTimeout"
 
-  (
-    debug "runCommandWithTimeout: keypress watch: start"
-    exec 3</dev/tty
-    stty -echo -icanon min 0 time 0 <&3
-    debug "runCommandWithTimeout: keypress watch: while loop: start"
-    while kill -0 $pidOllama 2>/dev/null; do # while Ollama is still running
-      debug "runCommandWithTimeout: keypress watch: key=dd call"
-      key=$(dd bs=1 count=1 <&3 2>/dev/null) # get 1 character of user input
-      debug "runCommandWithTimeout: keypress watch: while loop: key=[$key]"
-      if [[ -n "$key" ]]; then # if got user input
-        debug "runCommandWithTimeout: keypress watch: while loop: echo [SYSTEM-KEY-PRESS]"
-        echo -n "[SYSTEM-KEY-PRESS]"
-        >&2 echo "[Please wait for your turn.  <$model> is currently typing...]"
+#  (
+#    debug "runCommandWithTimeout: keypress watch: start"
+#    exec 3</dev/tty
+#    stty -echo -icanon min 0 time 0 <&3
+#    #debug "runCommandWithTimeout: keypress watch: while loop: start"
+#    while kill -0 $pidOllama 2>/dev/null; do # while Ollama is still running
+#      #debug "runCommandWithTimeout: keypress watch: key=dd call"
+#      key=$(dd bs=1 count=1 <&3 2>/dev/null) # get 1 character of user input
+#      #debug "runCommandWithTimeout: keypress watch: while loop: key=[$key]"
+#      if [[ -n "$key" ]]; then # if got user input
+#        debug "runCommandWithTimeout: keypress watch: while loop: echo [SYSTEM-KEY-PRESS]"
+#        echo -n "[SYSTEM-KEY-PRESS]"
+#        >&2 echo "[Please wait for your turn.  <$model> is currently typing...]"
+#
+#        debug "runCommandWithTimeout: while loop: kill $pidOllamaTimeout pidOllamaTimeout"
+#        kill $pidOllamaTimeout 2>/dev/null
+#        debug "runCommandWithTimeout: while loop: kill $pidOllama pidOllama"
+#        kill $pidOllama 2>/dev/null
+#
+#        break
+#      fi
+#      #debug "runCommandWithTimeout: keypress watch: sleep 1"
+#      sleep 1
+#    done
+#    #debug "runCommandWithTimeout: keypress watch: while loop: end"
+#    stty echo icanon <&3
+#    exec 3<&-
+#    debug "runCommandWithTimeout: keypress watch: end"
+#  ) &
+#  pidKeyPress=$!
+#  debug "runCommandWithTimeout: pidKeyPress=$pidKeyPress"
+#
+#  #debug "runCommandWithTimeout: ps: $(ps)"
 
-        debug "runCommandWithTimeout: while loop: kill $pidOllamaTimeout pidOllamaTimeout"
-        kill $pidOllamaTimeout 2>/dev/null
-        debug "runCommandWithTimeout: while loop: kill $pidOllama pidOllama"
-        kill $pidOllama 2>/dev/null
-
-        break
-      fi
-      debug "runCommandWithTimeout: keypress watch: sleep 1"
-      sleep 1
-    done
-    debug "runCommandWithTimeout: keypress watch: while loop: end"
-    stty echo icanon <&3
-    exec 3<&-
-    debug "runCommandWithTimeout: keypress watch: end"
-  ) &
-  pidKeyPress=$!
-  debug "runCommandWithTimeout: pidKeyPress=$pidKeyPress"
-
-  #debug "runCommandWithTimeout: ps: $(ps)"
-
-  debug "runCommandWithTimeout: wait $pidOllama pidOllama"
+  debug "runCommandWithTimeout: start: wait $pidOllama pidOllama"
   wait $pidOllama 2>/dev/null
-
+  debug "runCommandWithTimeout: end: wait $pidOllama pidOllama"
   #debug "runCommandWithTimeout: ps: $(ps)"
 
   debug "runCommandWithTimeout: kill $pidOllamaTimeout pidOllamaTimeout"
   kill $pidOllamaTimeout 2>/dev/null
-  debug "runCommandWithTimeout: kill $pidKeyPress pidKeyPress"
-  kill $pidKeyPress 2>/dev/null
+  #debug "runCommandWithTimeout: kill $pidKeyPress pidKeyPress"
+  #kill $pidKeyPress 2>/dev/null
 
   #debug "runCommandWithTimeout: ps: $(ps)"
   debug "runCommandWithTimeout: end"
@@ -344,13 +362,13 @@ handleCommands() {
   if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then
     setNewTopic "${BASH_REMATCH[1]}"
     return 1;
-# To leave the chat room, send ONLY the command: /quit <optional reason>
-#  elif [[ "$trimmedResponse" = "/quit" ]]; then
-#    quitChat "$model"
-#    return 1;
-#  elif [[ "$trimmedResponse" =~ ^/quit[[:space:]]+(.+)$ ]]; then
-#    quitChat "$model" "${BASH_REMATCH[1]}"
-#    return 1;
+  # To leave the chat room, send ONLY the command: /quit <optional reason>
+  elif [[ "$trimmedResponse" = "/quit" ]]; then
+    quitChat "$model"
+    return 1;
+  elif [[ "$trimmedResponse" =~ ^/quit[[:space:]]+(.+)$ ]]; then
+    quitChat "$model" "${BASH_REMATCH[1]}"
+    return 1;
   fi
   return 0;
 }
@@ -374,6 +392,18 @@ stopModel() {
   debug "Stopped model: $1"
 }
 
+userReply() {
+  model="user"
+  local userMessage=""
+  echo -n "${COLOR_SYSTEM}<$model>${COLOR_RESET} "
+  read userMessage
+  if [ -n "$userMessage" ]; then
+    handleCommands "$userMessage" && addToContext "<$model> $userMessage"
+  else
+    debug "No user message"
+  fi
+}
+
 #trap exitCleanup INT
 #
 #function exitCleanup() {
@@ -392,39 +422,66 @@ echo "${COLOR_SYSTEM}
 $NAME v$VERSION"
 echo
 setModels
-systemMessage "${#models[@]} models in the group chat room:"
+systemMessage "${#models[@]} models invited to the chat room:"
 systemMessage "$(printf "<%s> " "${models[@]}")"
+echo "${COLOR_RESET}"
+
 startRound
+
+debug "CHAT_MODE: ${CHAT_MODE}"
 debug "TIMEOUT: ${TIMEOUT} seconds"
 debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
-debug "TEXT_WRAP: ${TEXT_WRAP}${COLOR_RESET}"
+debug "TEXT_WRAP: ${TEXT_WRAP}"
+debug "MESSAGE_LIMIT: ${MESSAGE_LIMIT}"
+
 echo
 setTopic
 context=""
-addToContext "*** Topic: $topic"
+
+if [[ "$CHAT_MODE" == "reply" ]]; then
+  model="user"
+  addToContext "*** <$model> has joined the chat as administrator"
+  if [ -n "$topic" ]; then
+    setNewTopic "$topic"
+  fi
+fi
+
+for joiningModel in "${models[@]}"; do
+  addToContext "*** <$joiningModel> has joined the chat"
+done
+
 setInstructions; echo -e "$chatInstructions" > ./instructions.txt # LOGGING: save chat instructions
+
+if [[ "$CHAT_MODE" == "reply" ]]; then userReply; fi
+
 while true; do
   model="${round[0]}" # Get first speaker from round
+  round=("${round[@]:1}") # Remove speaker from round
+  if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
+    startRound
+  fi
   debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
   debug "calling: runCommandWithTimeout"
   response=$(runCommandWithTimeout)
   debug "called: runCommandWithTimeout"
-  debug "checking for [SYSTEM-KEY-PRESS]"
-  if [[ "$response" == *"[SYSTEM-KEY-PRESS]"* ]]; then
-    modelResponse=$(echo "$response" | sed 's/\[SYSTEM-KEY-PRESS\]//')
-    if [ -n "$modelResponse" ]; then
-      handleCommands "$modelResponse" && addToContext "<$model> $modelResponse"
-    fi
-    debug "PAUSING CHAT. model=$model response: $response"
-    echo; echo "Enter user input:"
-    read -r userInput
-    debug "USER INPUT: [$userInput]"
-    echo
-    model="user"
-    handleCommands "$userInput" && addToContext "<user> $userInput"
-    continue
-  fi
+#  debug "checking for [SYSTEM-KEY-PRESS]"
+#  if [[ "$response" == *"[SYSTEM-KEY-PRESS]"* ]]; then
+#    modelResponse=$(echo "$response" | sed 's/\[SYSTEM-KEY-PRESS\]//')
+#    if [ -n "$modelResponse" ]; then
+#      modelResponse=$(removeThinking "$modelResponse")
+#      handleCommands "$modelResponse" && addToContext "<$model> $modelResponse"
+#    fi
+#    debug "PAUSING CHAT. model=$model response: $response"
+#    echo; echo "Enter user input:"
+#    read -r userInput
+#    debug "USER INPUT: [$userInput]"
+#    if [ -n "$userInput" ]; then
+#      model="user"
+#      handleCommands "$userInput" && addToContext "<user> $userInput"
+#    fi
+#    continue
+#  fi
   debug "removeThinking"
   response=$(removeThinking "$response")
   stopModel "$model"
@@ -432,9 +489,6 @@ while true; do
     debug "[ERROR] No response from <${model}> within $TIMEOUT seconds"
   else
     handleCommands "$response" && addToContext "<$model> $response"
-  fi
-  round=("${round[@]:1}") # Remove speaker from round
-  if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
-    startRound
+    if [[ "$CHAT_MODE" == "reply" ]]; then userReply; fi
   fi
 done
