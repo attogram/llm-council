@@ -9,7 +9,7 @@
 #   See the usage help  : ./council.sh -h
 
 NAME="llm-council"
-VERSION="2.21"
+VERSION="2.22"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES=500 # number of lines in the chat log
@@ -441,14 +441,16 @@ context=""
 if [[ "$CHAT_MODE" == "reply" ]]; then
   model="user"
   addToContext "*** <$model> has joined the chat as administrator"
-  if [ -n "$topic" ]; then
-    setNewTopic "$topic"
-  fi
 fi
 
 for joiningModel in "${models[@]}"; do
   addToContext "*** <$joiningModel> has joined the chat"
 done
+
+if [ -n "$topic" ]; then
+  model="user"
+  setNewTopic "$topic"
+fi
 
 setInstructions; echo -e "$chatInstructions" > ./instructions.txt # LOGGING: save chat instructions
 
