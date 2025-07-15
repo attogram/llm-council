@@ -9,7 +9,7 @@
 #   See the usage help  : ./council.sh -h
 
 NAME="llm-council"
-VERSION="2.23"
+VERSION="2.24"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES=500 # number of lines in the chat log
@@ -397,7 +397,7 @@ userReply() {
   local userMessage=""
   echo -n "${COLOR_SYSTEM}<$model>${COLOR_RESET} "
   read userMessage < /dev/tty
-  echo -ne "\033[A\r\033[K" # move 1 line u p and clear line
+  echo -ne "\033[A\r\033[K" # move 1 line up and clear line
   if [ -n "$userMessage" ]; then
     handleCommands "$userMessage" && addToContext "<$model> $userMessage"
   else
@@ -465,8 +465,10 @@ while true; do
   fi
   debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
+  echo -n "${COLOR_SYSTEM}*** <$model> is typing...${COLOR_RESET}"
   debug "calling: runCommandWithTimeout"
   response=$(runCommandWithTimeout)
+  echo -ne "\r\033[K" # clear line
   debug "called: runCommandWithTimeout"
 #  debug "checking for [SYSTEM-KEY-PRESS]"
 #  if [[ "$response" == *"[SYSTEM-KEY-PRESS]"* ]]; then
