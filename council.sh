@@ -19,7 +19,7 @@
 #    ./council.sh -t 30
 
 NAME="llm-council"
-VERSION="2.19"
+VERSION="2.20"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES="500" # number of lines in the chat log
@@ -264,7 +264,7 @@ runCommandWithTimeout() {
   (
     debug "runCommandWithTimeout: keypress watch: start"
     exec 3</dev/tty
-    stty -echo -icanon <&3
+    stty -echo -icanon min 0 time 0 <&3
     debug "runCommandWithTimeout: keypress watch: while loop: start"
     while kill -0 $pidOllama 2>/dev/null; do # while Ollama is still running
       debug "runCommandWithTimeout: keypress watch: key=dd call"
@@ -282,8 +282,8 @@ runCommandWithTimeout() {
 
         break
       fi
-      debug "runCommandWithTimeout: keypress watch: sleep 0.1"
-      sleep 0.1
+      debug "runCommandWithTimeout: keypress watch: sleep 1"
+      sleep 1
     done
     debug "runCommandWithTimeout: keypress watch: while loop: end"
     stty echo icanon <&3
