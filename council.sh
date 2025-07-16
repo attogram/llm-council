@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 #
 # LLM Council
-#
 # Start a chat room between all, or some, of your models running on Ollama.
 #
-# Usage:
-#   Chat with all models: ./council.sh
-#   See the usage help  : ./council.sh -h
+# Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="2.24"
+VERSION="2.25"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES=500 # number of lines in the chat log
@@ -28,17 +25,17 @@ usage() {
   echo "  ./$me [flags] [topic]"
   echo; echo "Flags:";
   echo "  -m model1,model2 -- Use specific models (comma separated list)"
-  echo "  -nouser          -- Chat Mode: Chat only between models, no user messages (Default)"
-  echo "  -reply           -- Chat Mode: Always allow user to respond to every model message"
-#  echo "  -yesuser         -- Chat Mode: User can send messages upon keypress"
-  echo "  -t #             -- Set timeout to # seconds"
-  echo "  -timestamp       -- Show Date and time for every message"
-  echo "  -wrap #          -- Text wrap to # characters per line"
-  echo "  -nocolors        -- Do not use ANSI colors"
-  echo "  -debug           -- Debug Mode"
-  echo "  -v               -- Show version information"
-  echo "  -h               -- Help for $NAME"
-  echo "  [topic]          -- Set the chat room topic (\"Example topic\")"
+  echo "  -nu, --nouser    -- Chat Mode: Chat only between models, no user messages (Default)"
+  echo "  -r, --reply      -- Chat Mode: Allow user to respond to every model message"
+# echo "  -yesuser         -- Chat Mode: User can send messages upon keypress"
+  echo "  -to, --timeout   -- Set timeout to # seconds"
+  echo "  -ts, --timestamp -- Show Date and time for every message"
+  echo "  -w, --wrap       -- Text wrap to # characters per line"
+  echo "  -nc, --nocolors  -- Do not use ANSI colors"
+  echo "  -d, --debug      -- Debug Mode"
+  echo "  -v, --version    -- Show version information"
+  echo "  -h, --help       -- Help for $NAME"
+  echo '  [topic]          -- Set the chat room topic ("Example topic")'
 }
 
 debug() {
@@ -107,31 +104,31 @@ parseCommandLine() {
         usage
         exit 0
         ;;
-      -nouser) # Chat mode: no user
+      -nu|-nouser|--nouser) # Chat mode: no user
         CHAT_MODE="nouser"
         shift
         ;;
-      -yesuser) # Chat mode: user anytime
+      -yu|-yesuser|--yesuser) # Chat mode: user anytime
         CHAT_MODE="yesuser"
         shift
         ;;
-      -reply) # Chat mode: user reply after every model message
+      -r|-reply|--reply) # Chat mode: user reply after every model message
         CHAT_MODE="reply"
         shift
         ;;
-      -nocolors|--nocolors|-nc) # No ANSI Colors
+      -nc|-nocolor|--nocolor|-nocolors|--nocolors) # No ANSI Colors
         noColors
         shift
         ;;
-      -m|-models|--models) # specify models to run
+      -m|-model|--model|-models|--models) # specify models to run
         validateAndSetArgument "$1" "$2" "modelsList"
         shift 2
         ;;
-      -t|-timeout|--timeout) # set timeout
+      -to|-timeout|--timeout) # set timeout
         validateAndSetArgument "$1" "$2" "TIMEOUT"
         shift 2
         ;;
-      -timestamp|-timestamps|-ts) # show timestamps
+      -ts|-timestamp|--timestamp|-timestamps|--timestamps) # show timestamps
         TIME_STAMP=1
         shift
         ;;
@@ -139,11 +136,11 @@ parseCommandLine() {
         echo "$NAME v$VERSION"
         exit 0
         ;;
-      -wrap|-w) # wrap lines
+      -w|-wrap|--wrap) # wrap lines
         validateAndSetArgument "$1" "$2" "TEXT_WRAP"
         shift 2
         ;;
-      -*|--*=) # unsupported flags
+      -*|--*=|--*) # unsupported flags
         echo "Error: unsupported argument: $1" >&2
         exit 1
         ;;
@@ -405,12 +402,18 @@ userReply() {
   fi
 }
 
-#trap exitCleanup INT
-#
-#function exitCleanup() {
-#  echo; echo "Ending Chat."
-#  exit
-#}
+trap exitCleanup INT
+#trap exitCleanup SIGINT
+
+function exitCleanup() {
+  debug "exitCleanup"
+  echo
+  addToContext "*** <user> has closed the chat"
+  echo -ne "$COLOR_RESET"
+  stty sane 2>/dev/null
+  echo
+  exit 0
+}
 
 export OLLAMA_MAX_LOADED_MODELS=1
 yesColors
@@ -460,9 +463,7 @@ if [[ "$CHAT_MODE" == "reply" ]]; then userReply; fi
 while true; do
   model="${round[0]}" # Get first speaker from round
   round=("${round[@]:1}") # Remove speaker from round
-  if [ ${#round[@]} -eq 0 ]; then # If everyone has spoken, then restart round
-    startRound
-  fi
+  if [ ${#round[@]} -eq 0 ]; then startRound; fi # If everyone has spoken, then restart round
   debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
   echo -n "${COLOR_SYSTEM}*** <$model> is typing...${COLOR_RESET}"
