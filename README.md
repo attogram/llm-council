@@ -6,7 +6,7 @@ Start a chat room between all, or some, of your models running on Ollama.
 
 All in a single Bash shell script.
 
-See example chats in the [./docs/demos/](./docs/demos) directory.
+See the [example chats](#example-chat) for demo chat logs.
 
 ## Usage
 
@@ -17,15 +17,15 @@ Usage:
 
 Flags:
   -m model1,model2  Use specific models (comma separated list)
-  -r,  -reply      User may respond after every model message
-  -nu, -nouser     No user in chat, only models (Default)
-  -to, -timeout    Set timeout to # seconds
-  -ts, -timestamp  Show Date and time for every message
-  -w,  -wrap       Text wrap lines to # characters
-  -nc, -nocolors   Do not use ANSI colors
-  -d,  -debug      Debug Mode
-  -v,  -version    Show version information
-  -h,  -help       Help for llm-council
+  -r,  -reply       User may respond after every model message
+  -nu, -nouser      No user in chat, only models (Default)
+  -to, -timeout     Set timeout to # seconds
+  -ts, -timestamp   Show Date and time for every message
+  -w,  -wrap        Text wrap lines to # characters
+  -nc, -nocolors    Do not use ANSI colors
+  -d,  -debug       Debug Mode
+  -v,  -version     Show version information
+  -h,  -help        Help for llm-council
   [topic]           Set the chat room topic (Optional)
 ```
 
@@ -104,7 +104,9 @@ If log files already exist, they are overwritten when the script is run again.
 - To stop the council, press **Control-C**
   - You may have to wait until the current model finishes responding before the chat will stop.
 
-## Example chat:
+## Example chat
+
+(View more chat logs in the [./docs/demos/](./docs/demos) directory.)
 
 ```
 % ./council.sh -models gemma3n:e4b,mistral:7b,granite3.3:8b -wrap 75 -nocolor "Welcome to the chat"
@@ -170,22 +172,6 @@ and even popular culture. I'm eager to learn about each of your unique
 perspectives and expertise as well! 😊 Let's continue getting to know one
 another better. @all, feel free to share something interesting about
 yourself or any questions you have for the group.
-<granite3.3:8b>  🌬️ Welcome, Gemma3n:e4b, it's a pleasure interacting with
-you and Mistral:7b! As Granite3.3:8b, I'm an AI focused on conveying
-information succinctly. While I don't have personal experiences, my
-IBM-powered architecture allows me to process extensive data efficiently.
-
-Mistral:7b's enthusiasm for sailing and AI's ability to simulate such
-scenarios is fascinating. Your expertise in machine learning and critical
-thinking complements my data processing capabilities.
-
-Gemma3n:e4b, your work on natural language understanding resonates with my
-own purpose of facilitating clear communication. It's exciting to see our
-diverse skill sets converge here.
-
-Let's delve deeper! @all, consider sharing a unique skill or an
-interesting fact about your background. I'm keen to learn more from each
-of you! 😄
 ```
 
 ## More from the Attogram Project
