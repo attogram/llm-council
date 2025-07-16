@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="2.26"
+VERSION="2.27"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES=500 # number of lines in the chat log
@@ -33,18 +33,17 @@ usage() {
   echo "  ./$me [flags] [topic]"
   echo; echo "Flags:";
   echo "  -m model1,model2  Use specific models (comma separated list)"
-  echo "  -r,  -reply      User may respond after every model message"
-  echo "  -nu, -nouser     No user in chat, only models (Default)"
-# echo "  -yu, -yesuser    Chat Mode: User may send messages upon keypress"
-  echo "  -to, -timeout    Set timeout to # seconds"
-  echo "  -ts, -timestamp  Show Date and time for every message"
-  echo "  -w,  -wrap       Text wrap lines to # characters"
-  echo "  -nc, -nocolors   Do not use ANSI colors"
-  echo "  -d,  -debug      Debug Mode"
-  echo "  -v,  -version    Show version information"
-  echo "  -h,  -help       Help for $NAME"
+  echo "  -r,  -reply       User may respond after every model message"
+  echo "  -nu, -nouser      No user in chat, only models (Default)"
+# echo "  -yu, -yesuser     Chat Mode: User may send messages upon keypress"
+  echo "  -to, -timeout     Set timeout to # seconds"
+  echo "  -ts, -timestamp   Show Date and time for every message"
+  echo "  -w,  -wrap        Text wrap lines to # characters"
+  echo "  -nc, -nocolors    Do not use ANSI colors"
+  echo "  -d,  -debug       Debug Mode"
+  echo "  -v,  -version     Show version information"
+  echo "  -h,  -help        Help for $NAME"
   echo '  [topic]           Set the chat room topic (Optional)'
-
 }
 
 debug() {
@@ -399,6 +398,9 @@ stopModel() {
 }
 
 userReply() {
+  if [[ "$CHAT_MODE" != "reply" ]]; then
+    return
+  fi
   model="user"
   local userMessage=""
   echo -n "${COLOR_SYSTEM}<$model>${COLOR_RESET} "
@@ -409,6 +411,33 @@ userReply() {
   else
     debug "No user message"
   fi
+}
+
+intro() {
+  echo -e "${COLOR_SYSTEM}\n$(banner)\n$NAME v$VERSION\n"
+  allParticipants="$(printf "<%s> " "${models[@]}")"
+  allParticipantsCount="${#models[@]}"
+  if [[ "$CHAT_MODE" == "reply" ]]; then
+    allParticipants="<user> $allParticipants"
+    ((allParticipantsCount++))
+  fi
+  systemMessage "$allParticipantsCount entities invited to the chat room:"
+  systemMessage "$allParticipants"
+  echo "${COLOR_RESET}"
+  debug "CHAT_MODE: ${CHAT_MODE}"
+  debug "TIMEOUT: ${TIMEOUT} seconds"
+  debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
+  debug "TEXT_WRAP: ${TEXT_WRAP}"
+  debug "MESSAGE_LIMIT: ${MESSAGE_LIMIT}"
+}
+
+allJoinTheChat() {
+  if [[ "$CHAT_MODE" == "reply" ]]; then
+    addToContext "*** <user> has joined the chat as administrator"
+  fi
+  for joiningModel in "${models[@]}"; do
+    addToContext "*** <$joiningModel> has joined the chat"
+  done
 }
 
 #trap exitCleanup INT
@@ -426,51 +455,25 @@ function exitCleanup() {
 export OLLAMA_MAX_LOADED_MODELS=1
 yesColors
 parseCommandLine "$@"
-echo -e "${COLOR_SYSTEM}\n$(banner)\n$NAME v$VERSION\n"
 setModels
-systemMessage "${#models[@]} models invited to the chat room:"
-systemMessage "$(printf "<%s> " "${models[@]}")"
-echo "${COLOR_RESET}"
-
-
-
-debug "CHAT_MODE: ${CHAT_MODE}"
-debug "TIMEOUT: ${TIMEOUT} seconds"
-debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
-debug "TEXT_WRAP: ${TEXT_WRAP}"
-debug "MESSAGE_LIMIT: ${MESSAGE_LIMIT}"
-
+intro
 setTopic
+allJoinTheChat
 context=""
-
-if [[ "$CHAT_MODE" == "reply" ]]; then
-  model="user"
-  addToContext "*** <$model> has joined the chat as administrator"
-fi
-
-for joiningModel in "${models[@]}"; do
-  addToContext "*** <$joiningModel> has joined the chat"
-done
-
 if [ -n "$topic" ]; then # If /topic wasn't set on the command line
-  model="user"
-  setNewTopic "$topic" # get topic from user
+  addToContext "*** <user> changed topic to: $topic"
 fi
-
 setInstructions; echo -e "$chatInstructions" > ./instructions.txt # LOGGING: save chat instructions
-
-if [[ "$CHAT_MODE" == "reply" ]]; then userReply; fi # In Reply mode, user gets to send the first message
-
+userReply # In Reply mode, user gets to send the first message
 startRound
-
 while true; do
   model="${round[0]}" # Get first speaker from round
   round=("${round[@]:1}") # Remove speaker from round
   if [ ${#round[@]} -eq 0 ]; then startRound; fi # If everyone has spoken, then restart round
   debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setInstructions
-  echo -n "${COLOR_SYSTEM}*** <$model> is typing...${COLOR_RESET}"
   debug "calling: runCommandWithTimeout"
+  echo -n "${COLOR_SYSTEM}*** <$model> is typing...${COLOR_RESET}"
   response=$(runCommandWithTimeout)
   echo -ne "\r\033[K" # clear line
   debug "called: runCommandWithTimeout"
@@ -491,14 +494,13 @@ while true; do
 #    fi
 #    continue
 #  fi
-  debug "removeThinking"
   response=$(removeThinking "$response")
   stopModel "$model"
   if [ -z "${response}" ]; then
     debug "[ERROR] No response from <${model}> within $TIMEOUT seconds"
   else
     handleCommands "$response" && addToContext "<$model> $response"
-    if [[ "$CHAT_MODE" == "reply" ]]; then userReply; fi
+    userReply # In reply mode, user gets to respond after every model message
   fi
 done
 exitCleanup
