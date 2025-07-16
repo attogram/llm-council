@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="2.25"
+VERSION="2.26"
 URL="https://github.com/attogram/llm-council"
 
 CHAT_LOG_LINES=500 # number of lines in the chat log
@@ -17,6 +17,14 @@ TIME_STAMP=0 # Time Stamps for every message. 0 = no, 1 = yes
 MESSAGE_LIMIT=200 # Word limit for messages, suggested to models in the Chat Instructions
 CHAT_MODE="nouser" # Chat mode: nouser, reply, yesuser
 
+banner() {
+  echo "
+▗▖   ▗▖   ▗▖  ▗▖     ▗▄▄▖ ▗▄▖ ▗▖ ▗▖▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖▗▖
+▐▌   ▐▌   ▐▛▚▞▜▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌     █  ▐▌
+▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌    ▝▚▄▄▖▝▚▄▞▘▝▚▄▞▘▐▌ ▝▜▌▝▚▄▄▖▗▄█▄▖▐▙▄▄▖
+"
+}
+
 usage() {
   me=$(basename "$0")
   echo "$NAME"; echo
@@ -24,18 +32,19 @@ usage() {
   echo "  ./$me [flags]"
   echo "  ./$me [flags] [topic]"
   echo; echo "Flags:";
-  echo "  -m model1,model2 -- Use specific models (comma separated list)"
-  echo "  -nu, --nouser    -- Chat Mode: Chat only between models, no user messages (Default)"
-  echo "  -r, --reply      -- Chat Mode: Allow user to respond to every model message"
-# echo "  -yesuser         -- Chat Mode: User can send messages upon keypress"
-  echo "  -to, --timeout   -- Set timeout to # seconds"
-  echo "  -ts, --timestamp -- Show Date and time for every message"
-  echo "  -w, --wrap       -- Text wrap to # characters per line"
-  echo "  -nc, --nocolors  -- Do not use ANSI colors"
-  echo "  -d, --debug      -- Debug Mode"
-  echo "  -v, --version    -- Show version information"
-  echo "  -h, --help       -- Help for $NAME"
-  echo '  [topic]          -- Set the chat room topic ("Example topic")'
+  echo "  -m model1,model2  Use specific models (comma separated list)"
+  echo "  -r,  -reply      User may respond after every model message"
+  echo "  -nu, -nouser     No user in chat, only models (Default)"
+# echo "  -yu, -yesuser    Chat Mode: User may send messages upon keypress"
+  echo "  -to, -timeout    Set timeout to # seconds"
+  echo "  -ts, -timestamp  Show Date and time for every message"
+  echo "  -w,  -wrap       Text wrap lines to # characters"
+  echo "  -nc, -nocolors   Do not use ANSI colors"
+  echo "  -d,  -debug      Debug Mode"
+  echo "  -v,  -version    Show version information"
+  echo "  -h,  -help       Help for $NAME"
+  echo '  [topic]           Set the chat room topic (Optional)'
+
 }
 
 debug() {
@@ -184,13 +193,13 @@ setModels() {
 }
 
 setTopic() {
-  if [ -n "$topic" ]; then # if topic is already set from command line
+  if [ -n "$topic" ]; then # if topic was already set from command line
     return
   fi
   if [ -t 0 ]; then # Check if input is from a terminal (interactive)
-    echo "${COLOR_SYSTEM}Enter topic:${COLOR_RESET}"
+    echo -n "${COLOR_SYSTEM}/topic ${COLOR_RESET} "
     read -r topic # Read topic from user input
-    echo
+    echo -ne "\033[A\r\033[K" # move 1 line up and clear line
     return
   fi
   topic=$(cat) # Read from standard input (pipe or file)
@@ -393,7 +402,7 @@ userReply() {
   model="user"
   local userMessage=""
   echo -n "${COLOR_SYSTEM}<$model>${COLOR_RESET} "
-  read userMessage < /dev/tty
+  read -r userMessage < /dev/tty
   echo -ne "\033[A\r\033[K" # move 1 line up and clear line
   if [ -n "$userMessage" ]; then
     handleCommands "$userMessage" && addToContext "<$model> $userMessage"
@@ -402,9 +411,8 @@ userReply() {
   fi
 }
 
-trap exitCleanup INT
+#trap exitCleanup INT
 #trap exitCleanup SIGINT
-
 function exitCleanup() {
   debug "exitCleanup"
   echo
@@ -418,19 +426,13 @@ function exitCleanup() {
 export OLLAMA_MAX_LOADED_MODELS=1
 yesColors
 parseCommandLine "$@"
-echo "${COLOR_SYSTEM}
-▗▖   ▗▖   ▗▖  ▗▖     ▗▄▄▖ ▗▄▖ ▗▖ ▗▖▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖▗▖
-▐▌   ▐▌   ▐▛▚▞▜▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌     █  ▐▌
-▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌    ▝▚▄▄▖▝▚▄▞▘▝▚▄▞▘▐▌ ▝▜▌▝▚▄▄▖▗▄█▄▖▐▙▄▄▖
-
-$NAME v$VERSION"
-echo
+echo -e "${COLOR_SYSTEM}\n$(banner)\n$NAME v$VERSION\n"
 setModels
 systemMessage "${#models[@]} models invited to the chat room:"
 systemMessage "$(printf "<%s> " "${models[@]}")"
 echo "${COLOR_RESET}"
 
-startRound
+
 
 debug "CHAT_MODE: ${CHAT_MODE}"
 debug "TIMEOUT: ${TIMEOUT} seconds"
@@ -438,7 +440,6 @@ debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
 debug "TEXT_WRAP: ${TEXT_WRAP}"
 debug "MESSAGE_LIMIT: ${MESSAGE_LIMIT}"
 
-echo
 setTopic
 context=""
 
@@ -451,14 +452,16 @@ for joiningModel in "${models[@]}"; do
   addToContext "*** <$joiningModel> has joined the chat"
 done
 
-if [ -n "$topic" ]; then
+if [ -n "$topic" ]; then # If /topic wasn't set on the command line
   model="user"
-  setNewTopic "$topic"
+  setNewTopic "$topic" # get topic from user
 fi
 
 setInstructions; echo -e "$chatInstructions" > ./instructions.txt # LOGGING: save chat instructions
 
-if [[ "$CHAT_MODE" == "reply" ]]; then userReply; fi
+if [[ "$CHAT_MODE" == "reply" ]]; then userReply; fi # In Reply mode, user gets to send the first message
+
+startRound
 
 while true; do
   model="${round[0]}" # Get first speaker from round
@@ -498,3 +501,4 @@ while true; do
     if [[ "$CHAT_MODE" == "reply" ]]; then userReply; fi
   fi
 done
+exitCleanup
