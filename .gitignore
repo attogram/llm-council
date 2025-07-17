@@ -1,4 +1,6 @@
+dev/
 local/
+logs/
 .DS_Store
 instructions.txt
 messages.txt
