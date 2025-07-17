@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="2.28"
+VERSION="2.29"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup INT SIGINT
@@ -213,27 +213,35 @@ sendMessageToTerminal() {
 
 displayContextAdded() {
   local message="$1"
-  local display_text=""
-  #debug "displayContextAdded: start"
-  if [[ "$message" =~ ^'<'[^'>']+'>' ]]; then # TODO: bug: does not handle timestamps
-    #debug "displayContextAdded: found <>"
-    local model_part=${BASH_REMATCH[0]}
-    local rest_of_line=${message#$model_part}
-    # Apply bold formatting to <model> names at start of lines
+  local display=""
+  local name=""
+  local content=""
+  local timestamp=""
+  if [[ "$message" =~ ^'<'[^'>']+'>' ]] ; then
+    name=${BASH_REMATCH[0]} # <name>
+    content=${message#$name} # remove the <name> from content
+  fi
+  if [[ "$message" =~ ^(\[[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}\])\ ('<'[^'>']+'>')\ *(.*) ]]; then
+    timestamp=${BASH_REMATCH[1]} # [YYYY-MM-DD HH:MM:SS]
+    timestamp+=" "
+    name=${BASH_REMATCH[2]} # <name>
+    name+=" "
+    content=${BASH_REMATCH[3]} # actual content after timestamp and name
+  fi
+  if [ -n "$name" ]; then
+    # Apply bold formatting to <name> at start of line, toggle color scheme
     if [ $response_toggle -eq 0 ]; then
-      display_text="${COLOR_RESPONSE_1}${TEXT_BOLD}${model_part}${TEXT_NORMAL}${COLOR_RESPONSE_1}${rest_of_line}${COLOR_RESET}"
+      display="${timestamp}${COLOR_RESPONSE_1}${TEXT_BOLD}${name}${TEXT_NORMAL}${COLOR_RESPONSE_1}${content}${COLOR_RESET}"
       response_toggle=1
     else
-      display_text="${COLOR_RESPONSE_2}${TEXT_BOLD}${model_part}${TEXT_NORMAL}${COLOR_RESPONSE_2}${rest_of_line}${COLOR_RESET}"
+      display="${timestamp}${COLOR_RESPONSE_2}${TEXT_BOLD}${name}${TEXT_NORMAL}${COLOR_RESPONSE_2}${content}${COLOR_RESET}"
       response_toggle=0
     fi
   else
-    #debug "displayContextAdded: not found <>"
-    # No model part, is a system message
-    display_text="${COLOR_SYSTEM}${message}${COLOR_RESET}"
+    # Not a user/model message, is a system message
+    display="${COLOR_SYSTEM}${message}${COLOR_RESET}"
   fi
-  #debug "displayContextAdded: calling sendMessageToTerminal"
-  sendMessageToTerminal "$display_text"
+  sendMessageToTerminal "$display"
 }
 
 showTimestamp() {
