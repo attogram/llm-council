@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="2.29"
+VERSION="3.0"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup INT SIGINT
