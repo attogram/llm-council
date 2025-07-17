@@ -46,11 +46,15 @@ All chat participants, models and user, may use these commands:
 
 ## Logging
 
-Log files save the chat instructions, and the chat message log:
-- ```./instructions.txt```
-- ```./messages.txt```
+Logs are saved in the ```./logs``` directory.
 
-If log files already exist, they are overwritten when the script is run again.
+Every time the script is run, the model instructions and chat log are saved to files.
+
+The model instructions are saved to ```./logs/instructions.txt```
+
+The chat log is saved to ```./logs/messages.txt```
+
+New chats are appended to the message log.
 
 ## Usage Examples
 
@@ -64,7 +68,7 @@ If log files already exist, they are overwritten when the script is run again.
 - Run the council with all available Ollama models,
   entering the prompt interactively,
   and prompt user to respond after every model message.
-  (Press enter to skip your turn)
+  (Press Enter to skip your turn)
   ```
   ./council.sh -reply
   ```
@@ -80,6 +84,11 @@ If log files already exist, they are overwritten when the script is run again.
   ./council.sh -models gemma3n:e4b,mistral:7b,granite3.3:8b
   ```
 
+- Chat between one model and the user:
+  ```
+  ./council.sh -reply -models mistral:7b
+  ```
+  
 - Set the timeout (in seconds) for model responses.
   (Default is 30 seconds)
   ```
