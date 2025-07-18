@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.0"
+VERSION="3.1"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup INT SIGINT
@@ -19,6 +19,7 @@ TEXT_WRAP=0 # Text wrap. 0 = no wrap, >0 = wrap line
 TIME_STAMP=0 # Time Stamps for every message. 0 = no, 1 = yes
 MESSAGE_LIMIT=200 # Word limit for messages, suggested to models in the Chat Instructions
 CHAT_MODE="nouser" # Chat mode: nouser, reply
+SHOW_EMPTY=0 # Show Empty Messages. 0 = no, 1 = yes
 
 banner() {
   echo "
@@ -40,6 +41,7 @@ usage() {
   echo "  -nu, -nouser      No user in chat, only models (Default)"
   echo "  -to, -timeout     Set timeout to # seconds"
   echo "  -ts, -timestamp   Show Date and time for every message"
+  echo "  -se, -showempty   Show Empty messages (from timeouts)"
   echo "  -w,  -wrap        Text wrap lines to # characters"
   echo "  -nc, -nocolors    Do not use ANSI colors"
   echo "  -d,  -debug       Debug Mode"
@@ -130,6 +132,10 @@ parseCommandLine() {
       -m|-model|--model|-models|--models) # specify models to run
         validateAndSetArgument "$1" "$2" "modelsList"
         shift 2
+        ;;
+      -se|-showempty|--showempty|-empty|--empty) # Show empty messages
+        SHOW_EMPTY=1
+        shift
         ;;
       -to|-timeout|--timeout) # set timeout
         validateAndSetArgument "$1" "$2" "TIMEOUT"
@@ -410,14 +416,12 @@ userReply() {
 
 intro() {
   sendMessageToTerminal "${COLOR_SYSTEM}\n$(banner)\n$NAME v$VERSION\n"
-  allParticipants="$(printf "<%s> " "${models[@]}")"
-  allParticipantsCount="${#models[@]}"
+  introMsg="${#models[@]} models"
   if [[ "$CHAT_MODE" == "reply" ]]; then
-    allParticipants="<user> $allParticipants"
-    ((allParticipantsCount++))
+    introMsg+=", and 1 user,"
   fi
-  sendMessageToTerminal "$allParticipantsCount entities invited to the chat room:"
-  sendMessageToTerminal "$allParticipants"
+  introMsg+=" invited to the chat room."
+  sendMessageToTerminal "$introMsg"
   sendMessageToTerminal "${COLOR_RESET}"
   debug "CHAT_MODE: ${CHAT_MODE}"
   debug "TIMEOUT: ${TIMEOUT} seconds"
@@ -473,7 +477,7 @@ while true; do
   debug "called: runCommandWithTimeout"
   response=$(removeThinking "$response")
   stopModel "$model"
-  if [ -z "${response}" ]; then
+  if [ "$SHOW_EMPTY" != 1 ] && [ -z "${response}" ]; then
     debug "[ERROR] No response from <${model}> within $TIMEOUT seconds"
   else
     handleCommands "$response" && addToContext "<$model> $response"
