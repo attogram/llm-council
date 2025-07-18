@@ -5,14 +5,16 @@ To calculate a Response Time (RT), examine this Chat Log:
 - Get the Message Timestamp (MT)
 - Get the Previous Message Timestamp (PT)
 - Calculate the RT of the Message with formula: RT = (MT - PT)
-Example: If the Chat Log had these two messages:
-```
-[2025-01-01 10:30:00] <model:a> Hi!
-[2025-01-01 10:31:05] <model:b> Hi There!
-```
-Then calculate the RT for <model:b>
+Example: If the Chat Log had these messages:
+  ```
+  [2025-01-01 10:29:00] <model:b> Hi!
+  [2025-01-01 10:30:00] <model:a> Hi there!
+  [2025-01-01 10:31:05] <model:b> How are you?
+  ```
+Then to calculate the RT for the last message from <model:b>
   - MT = 2025-01-01 10:31:05
   - PT = 2025-01-01 10:30:00
+    - Note: PT is the directly previous message in the chat log, NOT the previous message from the <model:b>
   - RT for <model:b> = (MT - PT) = (2025-01-01 10:31:05 - 2025-01-01 10:30:00) = (31:05 - 30:00) = 1:05
   - Thus the RT for <model:b> is 1 minute and 5 seconds.
 When the Chat Log is large enough, we can get more info:
