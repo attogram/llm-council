@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.1"
+VERSION="3.2"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup INT SIGINT
@@ -345,6 +345,10 @@ quitChat() {
     changeNotice+=": $reason"
   fi
   addToContext "$changeNotice"
+  if [ "$model" == "user" ]; then # if <user> quits, change CHAT_MODE
+    CHAT_MODE="nouser"
+    return
+  fi
   # Remove the model from the models array
   local newModels=()
   for m in "${models[@]}"; do
