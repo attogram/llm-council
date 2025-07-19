@@ -55,18 +55,26 @@ usage() {
   echo '  [topic]           Set the chat room topic (Optional)'
 }
 
+sendToTerminal() {
+  if [ "$TEXT_WRAP" -ge 1 ]; then
+    echo -e "$1" | fold -s -w "$TEXT_WRAP"
+  else
+    echo -e "$1"
+  fi
+}
+
 commandHelp() {
-  sendMessageToTerminal "\nChat Commands:\n"
-  sendMessageToTerminal "/topic [Your Topic]      - Set a new topic"
-  sendMessageToTerminal "/quit (optional reason)  - Quit the chat"
-  sendMessageToTerminal
-  sendMessageToTerminal "Admin Commands:\n"
-  sendMessageToTerminal "/stop            - Close the chat and exit"
-  sendMessageToTerminal "/count           - Show number of models in chat"
-  sendMessageToTerminal "/list            - list current models in chat"
-  sendMessageToTerminal "/olist           - list available models in Ollama"
-  sendMessageToTerminal "/kick [model]    - Kick a model out of the chat"
-  sendMessageToTerminal "/invite [model]  - Invite a model into the chat"
+  sendToTerminal "\nChat Commands:\n"
+  sendToTerminal "/topic [Your Topic]      - Set a new topic"
+  sendToTerminal "/quit (optional reason)  - Quit the chat"
+  sendToTerminal
+  sendToTerminal "Admin Commands:\n"
+  sendToTerminal "/stop            - Close the chat and exit"
+  sendToTerminal "/count           - Show number of models in chat"
+  sendToTerminal "/list            - list current models in chat"
+  sendToTerminal "/olist           - list available models in Ollama"
+  sendToTerminal "/kick [model]    - Kick a model out of the chat"
+  sendToTerminal "/invite [model]  - Invite a model into the chat"
 }
 
 debug() {
@@ -228,14 +236,6 @@ setTopic() {
   topic=$(cat) # Read from standard input (pipe or file)
 }
 
-sendMessageToTerminal() {
-  if [ "$TEXT_WRAP" -ge 1 ]; then
-    echo -e "$1" | fold -s -w "$TEXT_WRAP"
-  else
-    echo -e "$1"
-  fi
-}
-
 displayContextAdded() {
   local message="$1"
   local display=""
@@ -266,7 +266,7 @@ displayContextAdded() {
     # Not a user/model message, is a system message
     display="${COLOR_SYSTEM}${message}${COLOR_RESET}"
   fi
-  sendMessageToTerminal "$display"
+  sendToTerminal "$display"
 }
 
 showTimestamp() {
@@ -389,23 +389,23 @@ handleAdminCommands() {
       exitCleanup
       ;;
     /count) # Count of models currently in chat
-      sendMessageToTerminal "\nThere are ${#models[@]} models in the chat."
+      sendToTerminal "\nThere are ${#models[@]} models in the chat."
       return $YES_COMMAND_HANDLED
       ;;
     /list) # List models currently in chat
       modelsCount=""
-      sendMessageToTerminal "\nThere are ${#models[@]} models in the chat:\n"
-      sendMessageToTerminal "$(printf "%s\n" "${models[@]}")"
+      sendToTerminal "\nThere are ${#models[@]} models in the chat:\n"
+      sendToTerminal "$(printf "%s\n" "${models[@]}")"
       return $YES_COMMAND_HANDLED
       ;;
     /olist) # Ollama list
-      sendMessageToTerminal "\nModels available in Ollama:\n"
+      sendToTerminal "\nModels available in Ollama:\n"
       ollama list | awk '{if (NR > 1) print $1}' | sort
       return $YES_COMMAND_HANDLED
       ;;
     /kick)
       if [ -z "$message" ]; then
-        sendMessageToTerminal "*** ERROR: No model specified to kick"
+        sendToTerminal "*** ERROR: No model specified to kick"
         return $YES_COMMAND_HANDLED
       fi
       # TODO - check if model is in the chat
@@ -415,7 +415,7 @@ handleAdminCommands() {
       ;;
     /invite)
       if [ -z "$message" ]; then
-        sendMessageToTerminal "*** ERROR: No model specified to invite"
+        sendToTerminal "*** ERROR: No model specified to invite"
         return $YES_COMMAND_HANDLED
       fi
       # TODO - check if model exists in Ollama...
@@ -427,7 +427,7 @@ handleAdminCommands() {
       return $YES_COMMAND_HANDLED
       ;;
     *)
-      sendMessageToTerminal "*** ERROR: Unknown Command"
+      sendToTerminal "*** ERROR: Unknown Command"
       return $YES_COMMAND_HANDLED
       ;;
   esac
@@ -441,7 +441,7 @@ handleBasicCommands() {
     /topic)
       if [ -z "$message" ]; then
         # TODO - differentiate between user /topic (show error) and model /topic
-        sendMessageToTerminal "*** ERROR: No topic to set"
+        sendToTerminal "*** ERROR: No topic to set"
         return $YES_COMMAND_HANDLED
       fi
       addToContext "*** <$model> changed topic to: $message"
@@ -528,13 +528,13 @@ userReply() {
 }
 
 intro() {
-  sendMessageToTerminal "${COLOR_SYSTEM}\n$(banner)\n$NAME v$VERSION\n"
+  sendToTerminal "${COLOR_SYSTEM}\n$(banner)\n$NAME v$VERSION\n"
   introMsg="${#models[@]} models"
   if [[ "$CHAT_MODE" == "reply" ]]; then introMsg+=", and 1 user,"; fi
   introMsg+=" invited to the chat room."
-  sendMessageToTerminal "$introMsg"
-  if [[ "$CHAT_MODE" == "reply" ]]; then sendMessageToTerminal "\nUse /help for chat commands"; fi
-  sendMessageToTerminal "${COLOR_RESET}"
+  sendToTerminal "$introMsg"
+  if [[ "$CHAT_MODE" == "reply" ]]; then sendToTerminal "\nUse /help for chat commands"; fi
+  sendToTerminal "${COLOR_RESET}"
   debug "CHAT_MODE: ${CHAT_MODE}"
   debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
   debug "LOG_DIRECTORY: ${LOG_DIRECTORY}"
