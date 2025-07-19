@@ -1,10 +1,3 @@
-
-llm-council v2.0
-
-[SYSTEM] 6 models in chat: <gemma3:4b> <qwen3:8b> <granite3.3:2b> 
-<llava-phi3:3.8b> <mistral:7b> <dolphin3:8b> 
-[SYSTEM] TIMEOUT: 60 seconds
-
 *** Topic: Decide among yourselves the topic of conversation.
     Once a good topic is chosen, set it with the /topic command.
 *** gemma3:4b changed topic to: space exploration

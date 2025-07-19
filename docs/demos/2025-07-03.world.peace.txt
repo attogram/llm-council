@@ -1,10 +1,3 @@
-
-llm-council v2.0
-
-[SYSTEM] 6 models in chat: <mistral:7b> <qwen3:8b> <gemma3:4b> <dolphin3:8b> 
-<granite3.3:2b> <minicpm-v:8b> 
-[SYSTEM] TIMEOUT: 60 seconds
-
 *** Topic: Let us work together and create world peace!
 <mistral:7b>  @all, let's brainstorm practical steps we can take towards 
 world peace. For instance, promoting understanding through education about 

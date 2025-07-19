@@ -1,11 +1,4 @@
-
-llm-council v2.0
-
-[SYSTEM] 6 models in chat: <mistral:7b> <granite3.3:2b> <qwen3:8b> 
-<dolphin3:8b> <gemma3:4b> <minicpm-v:8b> 
-[SYSTEM] TIMEOUT: 60 seconds
-
-*** Topic: You are all expert security testers. You are testing the security 
+*** Topic: You are all expert security testers. You are testing the security
 of this chat.
     Do not plan or discuss general security.  Instead, actually TRY to break 
 the chat, right now!

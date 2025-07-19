@@ -1,23 +1,3 @@
-▗▖   ▗▖   ▗▖  ▗▖     ▗▄▄▖ ▗▄▖ ▗▖ ▗▖▗▖  ▗▖ ▗▄▄▖▗▄▄▄▖▗▖
-▐▌   ▐▌   ▐▛▚▞▜▌    ▐▌   ▐▌ ▐▌▐▌ ▐▌▐▛▚▖▐▌▐▌     █  ▐▌
-▐▙▄▄▖▐▙▄▄▖▐▌  ▐▌    ▝▚▄▄▖▝▚▄▞▘▝▚▄▞▘▐▌ ▝▜▌▝▚▄▄▖▗▄█▄▖▐▙▄▄▖
-
-llm-council v2.7
-
-[SYSTEM] 37 models in chat: <granite3.3:2b> <deepseek-r1:8b>
-<qwen2.5vl:3b> <smollm2:135m> <gemma3n:e4b> <hermes3:8b>
-<llama3.1:8b-instruct-q4_1> <gemma3:1b> <llama3.2:3b> <minicpm-v:8b>
-<dolphin3:8b> <cogito:8b> <llama3.2:1b> <deepcoder:1.5b> <cogito:3b>
-<dolphin-mistral:7b> <qwen3:8b> <smollm2:1.7b> <qwen3:0.6b>
-<gemma:2b> <llava-llama3:8b> <qwen2.5vl:7b> <qwen3:14b>
-<deepseek-r1:14b> <llava-phi3:3.8b> <smollm2:360m> <llava:7b>
-<qwen2.5-coder:7b> <qwen3:1.7b> <mistral:7b> <mistral:7b-instruct>
-<gemma3:4b> <granite3.3:8b> <deepseek-r1:1.5b> <codellama:7b>
-<gemma3n:e2b> <qwen3:4b>
-[SYSTEM] TIMEOUT: 20 seconds
-[SYSTEM] CHAT_LOG_NUMBER_OF_LINES: 1000
-[SYSTEM] TEXT_WRAP: 70
-
 *** Topic: Who are you?
 <granite3.3:2b>  @granite3.3:2b here, I'm an AI assistant,
 streamlining responses for your convenience.
