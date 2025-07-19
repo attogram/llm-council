@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.11"
+VERSION="3.13"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -21,7 +21,7 @@ chatInstructions="" # Chat Instructions sent in the prompt to models
 startWithNoModels=0 # Start with No models (0 = no, 1 = yes)
 responseColorToggle=0 # Track alternating response color schemes
 
-CHAT_MODE="nouser" # Chat mode: nouser, reply
+CHAT_MODE="reply" # Chat mode: nouser, reply
 CHAT_LOG_LINES=500 # number of lines in the chat log
 LOG_DIRECTORY="./logs" # Log Directory (no slash at end)
 DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
@@ -56,8 +56,8 @@ Usage:
 Flags:
   -m,  -models      Specify which models join the chat (comma separated list)
   -nm, -nomodels    Start chat with no models
-  -r,  -reply       User may respond after every model message
-  -nu, -nouser      No user in chat, only models (Default)
+  -r,  -reply       User may respond after every model message (Default)
+  -nu, -nouser      No user in chat, only models
   -to, -timeout     Set timeout to # seconds
   -ts, -timestamp   Show Date and time for every message
   -se, -showempty   Show Empty messages (from timeouts)
@@ -71,8 +71,7 @@ Flags:
 }
 
 commandHelp() {
-  echo "
-Chat Commands:
+  echo "Chat Commands:
 
 /topic [Your Topic]      - Set a new topic
 /quit (optional reason)  - Leave the chat
@@ -87,7 +86,7 @@ Admin Commands:
 /kick [model]    - Kick model out of the chat
 /invite [model]  - Invite model into the chat
 /rules           - View the Chat Instructions sent to models
-/context         - View the Chat Log
+/log             - View the Chat Log
 /round           - List models in the current round
 /clear           - Clear the screen
 /help            - This command list
@@ -133,11 +132,20 @@ debug() {
   fi
 }
 
-userIsInChat() {
-  if [ "$CHAT_MODE" == "reply" ]; then
-    return $RETURN_SUCCESS
+sendToTerminal() {
+  if [ "$TEXT_WRAP" -ge 1 ]; then
+    echo -e "$1" | fold -s -w "$TEXT_WRAP"
+  else
+    echo -e "$1"
   fi
-  return $RETURN_ERROR
+}
+
+notice() {
+  >&2 sendToTerminal "${COLOR_DEBUG}NOTICE: $1${COLOR_RESET}"
+}
+
+error() {
+  >&2 sendToTerminal "${COLOR_DEBUG}ERROR: $1${COLOR_RESET}"
 }
 
 validateAndSetArgument() {
@@ -148,7 +156,7 @@ validateAndSetArgument() {
     eval "$var_name='$value'"
     return $RETURN_SUCCESS
   else
-    echo "Error: Argument for $flag is missing" >&2
+    error "Argument for $flag is missing" >&2
     exit $RETURN_ERROR
   fi
 }
@@ -207,7 +215,7 @@ parseCommandLine() {
         shift 2
         ;;
       -*|--*=|--*) # unsupported flags
-        echo "Error: Unsupported flag: $1" >&2
+        error "Unsupported flag: $1" >&2
         exit $RETURN_ERROR
         ;;
       *) # preserve positional arguments
@@ -226,7 +234,7 @@ setModels() {
   fi
   models=($(ollama list | awk '{if (NR > 1) print $1}' | sort)) # Get list of models, sorted alphabetically
   if [ -z "$models" ]; then
-    echo "ERROR: No models installed in Ollama. Please install models with 'ollama pull <model-name>'" >&2
+    error "No models installed in Ollama. Please install models with 'ollama pull <model-name>'" >&2
     exit $RETURN_ERROR
   fi
   local parsedModels=()
@@ -236,7 +244,7 @@ setModels() {
       if [[ " ${models[*]} " =~ " $m " ]]; then # if model exists
         parsedModels+=("$m")
       else
-        echo "ERROR: model not found: $m" >&2
+        error "Model not found: $m" >&2
         exit $RETURN_ERROR
       fi
     done
@@ -247,7 +255,7 @@ setModels() {
     models=("${sortedParsedModels[@]}")
   fi
   if [ ${#models[@]} -lt 1 ]; then
-    echo "NOTICE: there are no models in the chat" >&2
+    notice "No models in the chat" >&2
     return #exit $RETURN_ERROR
   fi
 }
@@ -263,14 +271,6 @@ setTopic() {
     return
   fi
   topic=$(cat) # Read from standard input (pipe or file)
-}
-
-sendToTerminal() {
-  if [ "$TEXT_WRAP" -ge 1 ]; then
-    echo -e "$1" | fold -s -w "$TEXT_WRAP"
-  else
-    echo -e "$1"
-  fi
 }
 
 displayContextAdded() {
@@ -411,20 +411,20 @@ handleAdminCommands() {
   local message="$2"
   case "$command" in
     /help) # Command help
-      sendToTerminal "$(commandHelp)"
+      sendToTerminal "\n$(commandHelp)\n"
       return $YES_COMMAND_HANDLED
       ;;
     /exit|/stop|/end|/close|/bye) # End the chat
       exitCleanup
       ;;
     /count) # Count of models currently in chat
-      sendToTerminal "\nThere are ${#models[@]} models in the chat."
+      sendToTerminal "\nThere are ${#models[@]} models in the chat.\n"
       return $YES_COMMAND_HANDLED
       ;;
     /list) # List models currently in chat
       modelsCount=""
       sendToTerminal "\nThere are ${#models[@]} models in the chat:\n"
-      sendToTerminal "$(printf "%s\n" "${models[@]}")"
+      sendToTerminal "$(printf "%s\n" "${models[@]}")\n"
       return $YES_COMMAND_HANDLED
       ;;
     /olist) # Ollama list
@@ -433,12 +433,14 @@ handleAdminCommands() {
       return $YES_COMMAND_HANDLED
       ;;
     /ps) # Ollama ps
+      sendToTerminal "\n"
       ollama ps
+      sendToTerminal "\n"
       return $YES_COMMAND_HANDLED
       ;;
     /kick) # Kick a model out of the chat
       if [ -z "$message" ]; then
-        sendToTerminal "*** ERROR: No model specified to kick"
+        error "No model specified to kick"
         return $YES_COMMAND_HANDLED
       fi
       # TODO - check if model is in the chat
@@ -448,7 +450,7 @@ handleAdminCommands() {
       ;;
     /invite) # Invite a model to join the chat
       if [ -z "$message" ]; then
-        sendToTerminal "*** ERROR: No model specified to invite"
+        error "No model specified to invite"
         return $YES_COMMAND_HANDLED
       fi
       # TODO - check if model exists in Ollama...
@@ -460,16 +462,16 @@ handleAdminCommands() {
       return $YES_COMMAND_HANDLED
       ;;
     /rules|/instructions|/instruction) # Show the Chat Instructions
-      sendToTerminal "$chatInstructions"
+      sendToTerminal "\n$chatInstructions"
       return $YES_COMMAND_HANDLED
       ;;
-    /context|/messages|/msgs|/log) # Show the Chat Log
-      sendToTerminal "$context"
+    /log|/logs|/messages|/msgs|/context) # Show the Chat Log
+      sendToTerminal "\n$context\n"
       return $YES_COMMAND_HANDLED
       ;;
     /round) # Show current round
       sendToTerminal "\nCurrent Round:\n"
-      sendToTerminal "$(printf "%s\n" "${round[@]}")"
+      sendToTerminal "$(printf "%s\n" "${round[@]}")\n"
       return $YES_COMMAND_HANDLED
       ;;
     /clear|/cls) # clear the screen
@@ -477,7 +479,7 @@ handleAdminCommands() {
       return $YES_COMMAND_HANDLED
       ;;
     *)
-      sendToTerminal "*** ERROR: Unknown Command"
+      error "Unknown Command"
       return $YES_COMMAND_HANDLED
       ;;
   esac
@@ -491,7 +493,7 @@ handleBasicCommands() {
     /topic) # Change the topic
       if [ -z "$message" ]; then
         # TODO - differentiate between user /topic (show error) and model /topic
-        sendToTerminal "*** ERROR: No topic to set"
+        error "No topic to set"
         return $YES_COMMAND_HANDLED
       fi
       topic="$message"
@@ -571,7 +573,7 @@ userReply() {
     addToContext "<$model> $userMessage"
     return
   fi
-  echo
+  # echo
   userReply # user /command handled, allow user to respond again
 }
 
@@ -618,7 +620,7 @@ setInstructions
 saveInstructionsToLog
 startRound
 if [ -z "$models" ]; then
-  echo "NOTICE: No models in the chat. Please /invite some models"
+  notice "No models in the chat. Please /invite some models"
   CHAT_MODE="reply"
 fi
 while true; do
@@ -639,7 +641,7 @@ while true; do
   message=$(removeThinking "$message")
   stopModel "$model"
   if [ "$SHOW_EMPTY" != 1 ] && [ -z "$message" ]; then
-    debug "[ERROR] No message from <$model> within $TIMEOUT seconds"
+    debug "No message from <$model> within $TIMEOUT seconds"
   else
     handleCommands "$message" && addToContext "<$model> $message"
   fi
