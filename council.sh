@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.14"
+VERSION="3.15"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -66,7 +66,7 @@ Flags:
   -d,  -debug       Debug Mode
   -v,  -version     Show version information
   -h,  -help        Help for $NAME
-  [topic]           Set the chat room topic (Optional)
+  [topic]           Set the chat topic (Optional)
 "
 }
 
@@ -376,6 +376,16 @@ removeModel() {
   models=("${newModels[@]}")
 }
 
+exitCleanup() {
+  debug "exitCleanup"
+  echo
+  addToContext "*** The chat is now closed"
+  echo -ne "$COLOR_RESET"
+  stty sane 2>/dev/null
+  echo
+  exit $RETURN_SUCCESS
+}
+
 quitChat() {
   local model="$1"
   local reason="$2"
@@ -386,6 +396,9 @@ quitChat() {
   addToContext "$changeNotice"
   if [ "$model" == "user" ]; then # if <user> quits, change CHAT_MODE
     CHAT_MODE="nouser"
+    if [ -z "$models" ]; then # no models in chat
+      exitCleanup # end the chat
+    fi
     return
   fi
   removeModel "$model"
@@ -394,16 +407,6 @@ quitChat() {
     echo; echo "${COLOR_SYSTEM}*** No models remaining. Chat ending.${COLOR_RESET}"
     exit $RETURN_SUCCESS
   fi
-}
-
-exitCleanup() {
-  debug "exitCleanup"
-  echo
-  addToContext "*** <user> has closed the chat"
-  echo -ne "$COLOR_RESET"
-  stty sane 2>/dev/null
-  echo
-  exit $RETURN_SUCCESS
 }
 
 handleAdminCommands() {
@@ -458,7 +461,7 @@ handleAdminCommands() {
       #addToContext "*** <user> invited <$response> to the chat"
       models+=("$message")
       round+=("$message")
-      addToContext "*** <$message> has joined the chat"
+      addToContext "*** <$message> joined the chat"
       return $YES_COMMAND_HANDLED
       ;;
     /rules|/rule|/instruction|/instructions) # Show the Chat Rules
@@ -581,7 +584,7 @@ intro() {
   sendToTerminal "${COLOR_SYSTEM}\n$(banner)\n$NAME v$VERSION\n"
   local introMsg="${#models[@]} models"
   if [[ "$CHAT_MODE" == "reply" ]]; then introMsg+=", and 1 user,"; fi
-  introMsg+=" invited to the chat room."
+  introMsg+=" invited to the chat"
   sendToTerminal "$introMsg"
   if [[ "$CHAT_MODE" == "reply" ]]; then sendToTerminal "\nUse ${TEXT_BOLD}/help${TEXT_NORMAL} for chat commands"; fi
   sendToTerminal "$COLOR_RESET"
@@ -598,13 +601,13 @@ intro() {
 
 allJoinTheChat() {
   if [[ "$CHAT_MODE" == "reply" ]]; then
-    addToContext "*** <user> has joined the chat as administrator"
+    addToContext "*** <user> joined the chat as administrator"
   fi
   if [ -n "$topic" ]; then # if topic was set
     addToContext "*** <user> changed topic to: $topic"
   fi
   for joiningModel in "${models[@]}"; do
-    addToContext "*** <$joiningModel> has joined the chat"
+    addToContext "*** <$joiningModel> joined the chat"
   done
 }
 
