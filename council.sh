@@ -85,6 +85,7 @@ Admin Commands:
 /invite [model]  - Invite model into the chat
 /rules           - View the Chat Instructions sent to models
 /clear           - Clear the screen
+/help            - This command list
 "
 }
 

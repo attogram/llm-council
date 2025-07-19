@@ -48,6 +48,8 @@ Admin Commands:
 /kick [model]    - Kick model out of the chat
 /invite [model]  - Invite model into the chat
 /rules           - View the Chat Instructions sent to models
+/clear           - Clear the screen
+/help            - This command list
 ```
 
 ## How it works
@@ -55,13 +57,11 @@ Admin Commands:
 Model chats are in the round:
 - A round starts with a list of all models, randomly sorted.
 - The first model in the round is asked to chat.
-  - The model must respond within the timeout period,
-    otherwise its response is truncated.
+  - The model must respond within the timeout period, otherwise its response is truncated.
 - When the first model finishes, it is removed from the round.
 - If the user is in the chat, they are given the option to respond.
 - Then the next model in the round is asked to chat, and so on.
-- When the round is done (all models have chatted),
-  then a new round is started.
+- When the round is done (all models have chatted), then a new round is started.
 
 ## Logging
 
