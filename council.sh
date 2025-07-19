@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.9"
+VERSION="3.10"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -60,16 +60,8 @@ Flags:
 "
 }
 
-sendToTerminal() {
-  if [ "$TEXT_WRAP" -ge 1 ]; then
-    echo -e "$1" | fold -s -w "$TEXT_WRAP"
-  else
-    echo -e "$1"
-  fi
-}
-
 commandHelp() {
-  sendToTerminal "
+  echo "
 Chat Commands:
 
 /topic [Your Topic]      - Set a new topic
@@ -250,6 +242,14 @@ setTopic() {
   topic=$(cat) # Read from standard input (pipe or file)
 }
 
+sendToTerminal() {
+  if [ "$TEXT_WRAP" -ge 1 ]; then
+    echo -e "$1" | fold -s -w "$TEXT_WRAP"
+  else
+    echo -e "$1"
+  fi
+}
+
 displayContextAdded() {
   local message="$1"
   local display=""
@@ -389,7 +389,7 @@ handleAdminCommands() {
   local message="$2"
   case "$command" in
     /help)
-      commandHelp
+      sendToTerminal "$(commandHelp)"
       return $YES_COMMAND_HANDLED
       ;;
     /exit|/stop|/end|/close|/bye)
