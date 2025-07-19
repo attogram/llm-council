@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.5"
+VERSION="3.6"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -56,7 +56,7 @@ usage() {
 }
 
 commandHelp() {
-  sendMessageToTerminal "Chat Commands:\n"
+  sendMessageToTerminal "\nChat Commands:\n"
   sendMessageToTerminal "/topic [Your Topic]      - Set a new topic"
   sendMessageToTerminal "/quit (optional reason)  - Quit the chat"
   sendMessageToTerminal
@@ -321,39 +321,20 @@ removeThinking() {
   echo "$message"
 }
 
-runCommandWithTimeout() {
-  #debug "runCommandWithTimeout: start"
+ollamaRunWithTimeout() {
   (
-    #debug "runCommandWithTimeout: ollama run: start"
     ollama run "${model}" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null
-    #debug "runCommandWithTimeout: ollama run: end"
   ) &
   pidOllama=$!
-  #debug "runCommandWithTimeout: pidOllama=$pidOllama"
-
   (
-    #debug "runCommandWithTimeout: ollama timeout watch: start: TIMEOUT=$TIMEOUT"
     sleep "$TIMEOUT"
-    #debug "runCommandWithTimeout: ollama timeout watch: sleep $TIMEOUT done"
     if kill -0 $pidOllama 2>/dev/null; then
-      #debug "runCommandWithTimeout: ollama timeout watch: kill $pidOllama pidOllama"
       kill $pidOllama 2>/dev/null
     fi
-    #debug "runCommandWithTimeout: ollama timeout watch: end"
   ) &
   pidOllamaTimeout=$!
-  #debug "runCommandWithTimeout: pidOllamaTimeout=$pidOllamaTimeout"
-
-  #debug "runCommandWithTimeout: start: wait $pidOllama pidOllama"
   wait $pidOllama 2>/dev/null
-  #debug "runCommandWithTimeout: end: wait $pidOllama pidOllama"
-  #debug "runCommandWithTimeout: ps: $(ps)"
-
-  #debug "runCommandWithTimeout: kill $pidOllamaTimeout pidOllamaTimeout"
   kill $pidOllamaTimeout 2>/dev/null
-
-  #debug "runCommandWithTimeout: ps: $(ps)"
-  #debug "runCommandWithTimeout: end"
 }
 
 removeModel() {
@@ -408,17 +389,17 @@ handleAdminCommands() {
       exitCleanup
       ;;
     /count) # Count of models currently in chat
-      sendMessageToTerminal "There are ${#models[@]} models in the chat."
+      sendMessageToTerminal "\nThere are ${#models[@]} models in the chat."
       return $YES_COMMAND_HANDLED
       ;;
     /list) # List models currently in chat
       modelsCount=""
-      sendMessageToTerminal "There are ${#models[@]} models in the chat:\n"
+      sendMessageToTerminal "\nThere are ${#models[@]} models in the chat:\n"
       sendMessageToTerminal "$(printf "%s\n" "${models[@]}")"
       return $YES_COMMAND_HANDLED
       ;;
     /olist) # Ollama list
-      sendMessageToTerminal "Models available in Ollama:\n"
+      sendMessageToTerminal "\nModels available in Ollama:\n"
       ollama list | awk '{if (NR > 1) print $1}' | sort
       return $YES_COMMAND_HANDLED
       ;;
@@ -450,27 +431,16 @@ handleAdminCommands() {
       return $YES_COMMAND_HANDLED
       ;;
   esac
-  debug "handleAdminCommands: NO_COMMAND_HANDLED"
   return $NO_COMMAND_HANDLED
 }
 
-handleCommands() {
-  local message="$1"
-  # Remove leading/trailing whitespace
-  local message=$(echo "$message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-  # Get the first word in message, in lowercase
-  local command=$(echo "$message" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
-  if [[ "$command" =~ ^/ ]]; then
-    debug "handleCommands: command: $command"
-  else
-    return $NO_COMMAND_HANDLED
-  fi
-  # remove /command from message
-  local message=$(echo "$message" | awk '{ sub(/^[^ ]+ */, "", $0); print }')
-  debug "handleCommands: Basic Commands: $command"
+handleBasicCommands() {
+  local command="$1"
+  local message="$2"
   case "$command" in
     /topic)
       if [ -z "$message" ]; then
+        # TODO - differentiate between user /topic (show error) and model /topic
         sendMessageToTerminal "*** ERROR: No topic to set"
         return $YES_COMMAND_HANDLED
       fi
@@ -482,13 +452,33 @@ handleCommands() {
       return $YES_COMMAND_HANDLED
       ;;
   esac
-  if [ "$model" != "user" ]; then # If model is not an administrator
+  return $NO_COMMAND_HANDLED
+}
+
+handleCommands() {
+  local message="$1"
+  local message=$(echo "$message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//') # Remove leading/trailing whitespace
+  local command=$(echo "$message" | awk '{print $1}' | tr '[:upper:]' '[:lower:]') # Get first word in message, to lowercase
+  if [[ "$command" =~ ^/ ]]; then # If starts with a / then it is a command
+    debug "handleCommands: command: $command"
+  else
+    return $NO_COMMAND_HANDLED
+  fi
+  local message=$(echo "$message" | awk '{ sub(/^[^ ]+ */, "", $0); print }') # remove /command from message
+
+  handleBasicCommands "$command" "$message"
+  handleBasicCommandsReturn=$?
+  if [[ "$handleBasicCommandsReturn" -eq "$YES_COMMAND_HANDLED" ]]; then
+    return $YES_COMMAND_HANDLED
+  fi
+
+  if [[ "$model" != "user" ]]; then # If model is not an administrator
     return $NO_COMMAND_HANDLED
   fi
 
   handleAdminCommands "$command" "$message"
-  returnStatus=$? # get return status code of handleAdminCommands
-  if [[ "$returnStatus" -eq "$YES_COMMAND_HANDLED" ]]; then
+  handleAdminCommandsReturn=$?
+  if [[ "$handleAdminCommandsReturn" -eq "$YES_COMMAND_HANDLED" ]]; then
     return $YES_COMMAND_HANDLED
   fi
   return $NO_COMMAND_HANDLED
@@ -588,7 +578,7 @@ while true; do
   setInstructions
   debug "calling: runCommandWithTimeout"
   echo -n "${COLOR_SYSTEM}*** <$model> is typing...${COLOR_RESET}"
-  message=$(runCommandWithTimeout)
+  message=$(ollamaRunWithTimeout)
   echo -ne "\r\033[K" # clear line
   debug "called: runCommandWithTimeout"
   message=$(removeThinking "$message")
