@@ -21,6 +21,7 @@ Flags:
   -nu, -nouser      No user in chat, only models (Default)
   -to, -timeout     Set timeout to # seconds
   -ts, -timestamp   Show Date and time for every message
+  -se, -showempty   Show Empty messages (from timeouts)
   -w,  -wrap        Text wrap lines to # characters
   -nc, -nocolors    Do not use ANSI colors
   -d,  -debug       Debug Mode
@@ -29,20 +30,38 @@ Flags:
   [topic]           Set the chat room topic (Optional)
 ```
 
+## Chat Commands
+
+```
+Chat Commands:
+
+/topic [Your Topic]      - Set a new topic
+/quit (optional reason)  - Leave the chat
+
+Admin Commands:
+
+/stop            - Close the chat and exit
+/count           - Show number of models in chat
+/list            - List models in chat
+/olist           - Show available models in Ollama
+/ps              - Show running models in Ollama
+/kick [model]    - Kick model out of the chat
+/invite [model]  - Invite model into the chat
+/rules           - View the Chat Instructions sent to models
+```
+
 ## How it works
 
 Model chats are in the round:
-- A round is a list of all models, randomly sorted.
-- The first model in the round is asked to chat, then removed from the round.
-- Then the next model is asked to chat, and so on.
-- When the round is done (all models have chatted) then a new round is started.
-
-## Chat Commands
-
-All chat participants, models and user, may use these commands:
-
-- ```/topic <new topic>```
-- ```/quit <optional reason>```
+- A round starts with a list of all models, randomly sorted.
+- The first model in the round is asked to chat.
+  - The model must respond within the timeout period,
+    otherwise its response is truncated.
+- When the first model finishes, it is removed from the round.
+- If the user is in the chat, they are given the option to respond.
+- Then the next model in the round is asked to chat, and so on.
+- When the round is done (all models have chatted),
+  then a new round is started.
 
 ## Logging
 
@@ -73,12 +92,19 @@ New chats are appended to the message log.
   ./council.sh -reply
   ```
 
-- Run the council with all available Ollama models
+- Run the council with all available Ollama models,
   setting the /topic on the command line:
   ```
   ./council.sh "Let us work together and create world peace"
   ```
-    
+  or
+  ```
+  ./council.sh < test-prompts/world.peace.txt
+  ```
+  or
+  ```
+  echo "Let us work together and create world peace" | ./council.sh
+  ```
 - Specify which models to use in the council:
   ```
   ./council.sh -models gemma3n:e4b,mistral:7b,granite3.3:8b
@@ -95,7 +121,7 @@ New chats are appended to the message log.
   ./council.sh -timeout 60
   ```
 
-- Show timestamps with ever message:
+- Show timestamps with every message:
   ```
   ./council.sh -timestamp
   ```
