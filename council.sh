@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.7"
+VERSION="3.8"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -64,18 +64,23 @@ sendToTerminal() {
 }
 
 commandHelp() {
-  sendToTerminal "\nChat Commands:\n"
-  sendToTerminal "/topic [Your Topic]      - Set a new topic"
-  sendToTerminal "/quit (optional reason)  - Quit the chat"
-  sendToTerminal
-  sendToTerminal "Admin Commands:\n"
-  sendToTerminal "/stop            - Close the chat and exit"
-  sendToTerminal "/count           - Show number of models in chat"
-  sendToTerminal "/list            - List current models in chat"
-  sendToTerminal "/olist           - Show available models in Ollama"
-  sendToTerminal "/ps              - Show running models in Ollama"
-  sendToTerminal "/kick [model]    - Kick a model out of the chat"
-  sendToTerminal "/invite [model]  - Invite a model into the chat"
+  sendToTerminal "
+Chat Commands:
+
+/topic [Your Topic]      - Set a new topic
+/quit (optional reason)  - Leave the chat
+
+Admin Commands:
+
+/stop            - Close the chat and exit
+/count           - Show number of models in chat
+/list            - List models in chat
+/olist           - Show available models in Ollama
+/ps              - Show running models in Ollama
+/kick [model]    - Kick model out of the chat
+/invite [model]  - Invite model into the chat
+/rules           - View the Chat Instructions sent to models
+"
 }
 
 debug() {
@@ -86,7 +91,7 @@ debug() {
 
 setInstructions() {
   chatInstructions="You are in a group chat with ${#models[@]} members.
-You are user <$model>.
+You are user <${model:-user}>.
 If you want to mention another user, you MUST use syntax: @username.
 If you want to leave the chat, send ONLY the 1 line command: /quit <optional reason>
 If you want to set a new topic, send ONLY the 1 line command: /topic <new topic>
@@ -432,6 +437,10 @@ handleAdminCommands() {
       addToContext "*** <$message> has joined the chat"
       return $YES_COMMAND_HANDLED
       ;;
+    /rules|/instructions|/instruction)
+      sendToTerminal "$chatInstructions"
+      return $YES_COMMAND_HANDLED
+      ;;
     *)
       sendToTerminal "*** ERROR: Unknown Command"
       return $YES_COMMAND_HANDLED
@@ -539,7 +548,7 @@ intro() {
   if [[ "$CHAT_MODE" == "reply" ]]; then introMsg+=", and 1 user,"; fi
   introMsg+=" invited to the chat room."
   sendToTerminal "$introMsg"
-  if [[ "$CHAT_MODE" == "reply" ]]; then sendToTerminal "\nUse /help for chat commands"; fi
+  if [[ "$CHAT_MODE" == "reply" ]]; then sendToTerminal "\nUse ${TEXT_BOLD}/help${TEXT_NORMAL} for chat commands"; fi
   sendToTerminal "${COLOR_RESET}"
   debug "CHAT_MODE: ${CHAT_MODE}"
   debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
