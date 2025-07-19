@@ -6,11 +6,12 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.4"
+VERSION="3.5"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
 
+CHAT_MODE="nouser" # Chat mode: nouser, reply
 CHAT_LOG_LINES=500 # number of lines in the chat log
 LOG_DIRECTORY="./logs" # Log Directory (no slash at end)
 DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
@@ -18,11 +19,12 @@ TIMEOUT=20 # number of seconds to wait for model response
 TEXT_WRAP=0 # Text wrap. 0 = no wrap, >0 = wrap line
 TIME_STAMP=0 # Time Stamps for every message. 0 = no, 1 = yes
 MESSAGE_LIMIT=200 # Word limit for messages, suggested to models in the Chat Instructions
-CHAT_MODE="nouser" # Chat mode: nouser, reply
 SHOW_EMPTY=0 # Show Empty Messages. 0 = no, 1 = yes
 
 RETURN_SUCCESS=0
 RETURN_ERROR=1
+YES_COMMAND_HANDLED=1
+NO_COMMAND_HANDLED=0
 
 banner() {
   echo "
@@ -51,6 +53,20 @@ usage() {
   echo "  -v,  -version     Show version information"
   echo "  -h,  -help        Help for $NAME"
   echo '  [topic]           Set the chat room topic (Optional)'
+}
+
+commandHelp() {
+  sendMessageToTerminal "Chat Commands:\n"
+  sendMessageToTerminal "/topic [Your Topic]      - Set a new topic"
+  sendMessageToTerminal "/quit (optional reason)  - Quit the chat"
+  sendMessageToTerminal
+  sendMessageToTerminal "Admin Commands:\n"
+  sendMessageToTerminal "/stop            - Close the chat and exit"
+  sendMessageToTerminal "/count           - Show number of models in chat"
+  sendMessageToTerminal "/list            - list current models in chat"
+  sendMessageToTerminal "/olist           - list available models in Ollama"
+  sendMessageToTerminal "/kick [model]    - Kick a model out of the chat"
+  sendMessageToTerminal "/invite [model]  - Invite a model into the chat"
 }
 
 debug() {
@@ -365,46 +381,29 @@ quitChat() {
   fi
   removeModel "$model"
   if [ ${#models[@]} -lt 1 ]; then
-    echo; echo "${COLOR_SYSTEM}[SYSTEM] No models remaining. Chat ending.${COLOR_RESET}"
+    echo; echo "${COLOR_SYSTEM}*** No models remaining. Chat ending.${COLOR_RESET}"
     exit $RETURN_SUCCESS
   fi
 }
 
-handleCommands() {
-  YES_COMMAND_HANDLED=1
-  NO_COMMAND_HANDLED=0
-  local response="$1"
-  # Remove leading/trailing whitespace
-  local response=$(echo "$response" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-  # Get the first word in response, in lowercase
-  local command=$(echo "$response" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
-  if [[ "$command" =~ ^/ ]]; then
-    debug "handleCommands: command: $command"
-  else
-    return $NO_COMMAND_HANDLED
-  fi
-  # remove /command from response
-  local response=$(echo "$response" | awk '{ sub(/^[^ ]+ */, "", $0); print }')
-  # Handle commands
+exitCleanup() {
+  debug "exitCleanup"
+  echo
+  addToContext "*** <user> has closed the chat"
+  echo -ne "$COLOR_RESET"
+  stty sane 2>/dev/null
+  echo
+  exit $RETURN_SUCCESS
+}
+
+handleAdminCommands() {
+  local command="$1"
+  local message="$2"
   case "$command" in
-    /topic)
-      if [ -z "$response" ]; then
-        sendMessageToTerminal "*** ERROR: No topic to set"
-        return $YES_COMMAND_HANDLED
-      fi
-      addToContext "*** <$model> changed topic to: $response"
+    /help)
+      commandHelp
       return $YES_COMMAND_HANDLED
       ;;
-    /quit)
-      quitChat "$model" "$response"
-      return $YES_COMMAND_HANDLED
-      ;;
-  esac
-  if [ "$model" != "user" ]; then # If model is not an administrator
-    return $NO_COMMAND_HANDLED
-  fi
-  # Handle Administrator Commands
-  case "$command" in
     /exit|/stop|/end|/close|/bye)
       exitCleanup
       ;;
@@ -414,39 +413,84 @@ handleCommands() {
       ;;
     /list) # List models currently in chat
       modelsCount=""
-      sendMessageToTerminal "There are ${#models[@]} models in the chat: "
+      sendMessageToTerminal "There are ${#models[@]} models in the chat:\n"
       sendMessageToTerminal "$(printf "%s\n" "${models[@]}")"
       return $YES_COMMAND_HANDLED
       ;;
     /olist) # Ollama list
-      sendMessageToTerminal "Models available in Ollama:"
+      sendMessageToTerminal "Models available in Ollama:\n"
       ollama list | awk '{if (NR > 1) print $1}' | sort
       return $YES_COMMAND_HANDLED
       ;;
     /kick)
-      if [ -z "$response" ]; then
+      if [ -z "$message" ]; then
         sendMessageToTerminal "*** ERROR: No model specified to kick"
         return $YES_COMMAND_HANDLED
       fi
-      addToContext "*** <user> kicked <$response> out of the chat"
-      removeModel "$response"
+      # TODO - check if model is in the chat
+      addToContext "*** <user> kicked <$message> out of the chat"
+      removeModel "$message"
       return $YES_COMMAND_HANDLED
       ;;
     /invite)
-      if [ -z "$response" ]; then
+      if [ -z "$message" ]; then
         sendMessageToTerminal "*** ERROR: No model specified to invite"
         return $YES_COMMAND_HANDLED
       fi
       # TODO - check if model exists in Ollama...
       # TODO - check if model is already present in chat...
       #addToContext "*** <user> invited <$response> to the chat"
-      models+=("$response")
-      round+=("$response")
-      addToContext "*** <$response> has joined the chat"
+      models+=("$message")
+      round+=("$message")
+      addToContext "*** <$message> has joined the chat"
+      return $YES_COMMAND_HANDLED
+      ;;
+    *)
+      sendMessageToTerminal "*** ERROR: Unknown Command"
       return $YES_COMMAND_HANDLED
       ;;
   esac
+  debug "handleAdminCommands: NO_COMMAND_HANDLED"
+  return $NO_COMMAND_HANDLED
+}
 
+handleCommands() {
+  local message="$1"
+  # Remove leading/trailing whitespace
+  local message=$(echo "$message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  # Get the first word in message, in lowercase
+  local command=$(echo "$message" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+  if [[ "$command" =~ ^/ ]]; then
+    debug "handleCommands: command: $command"
+  else
+    return $NO_COMMAND_HANDLED
+  fi
+  # remove /command from message
+  local message=$(echo "$message" | awk '{ sub(/^[^ ]+ */, "", $0); print }')
+  debug "handleCommands: Basic Commands: $command"
+  case "$command" in
+    /topic)
+      if [ -z "$message" ]; then
+        sendMessageToTerminal "*** ERROR: No topic to set"
+        return $YES_COMMAND_HANDLED
+      fi
+      addToContext "*** <$model> changed topic to: $message"
+      return $YES_COMMAND_HANDLED
+      ;;
+    /quit)
+      quitChat "$model" "$message"
+      return $YES_COMMAND_HANDLED
+      ;;
+  esac
+  if [ "$model" != "user" ]; then # If model is not an administrator
+    return $NO_COMMAND_HANDLED
+  fi
+
+  handleAdminCommands "$command" "$message"
+  returnStatus=$? # get return status code of handleAdminCommands
+  if [[ "$returnStatus" -eq "$YES_COMMAND_HANDLED" ]]; then
+    return $YES_COMMAND_HANDLED
+  fi
   return $NO_COMMAND_HANDLED
 }
 
@@ -473,32 +517,43 @@ userReply() {
   if [[ "$CHAT_MODE" != "reply" ]]; then
     return
   fi
+  debug "userReply"
   model="user"
   local userMessage=""
   echo -n "${COLOR_SYSTEM}<$model>${COLOR_RESET} "
   read -r userMessage < /dev/tty
   echo -ne "\033[A\r\033[K" # move 1 line up and clear line
-  if [ -n "$userMessage" ]; then
-    handleCommands "$userMessage" && addToContext "<$model> $userMessage"
-  else
+  if [ -z "$userMessage" ]; then
     debug "No user message"
+    return
   fi
+  handleCommands "$userMessage"
+  returnStatus=$? # get return status code of handleCommands
+  if [[ "$returnStatus" -eq "$NO_HANDLED_COMMAND" ]]; then
+    addToContext "<$model> $userMessage"
+    return
+  fi
+  echo
+  userReply # user /command handled, allow user to respond again
 }
 
 intro() {
   sendMessageToTerminal "${COLOR_SYSTEM}\n$(banner)\n$NAME v$VERSION\n"
   introMsg="${#models[@]} models"
-  if [[ "$CHAT_MODE" == "reply" ]]; then
-    introMsg+=", and 1 user,"
-  fi
+  if [[ "$CHAT_MODE" == "reply" ]]; then introMsg+=", and 1 user,"; fi
   introMsg+=" invited to the chat room."
   sendMessageToTerminal "$introMsg"
+  if [[ "$CHAT_MODE" == "reply" ]]; then sendMessageToTerminal "\nUse /help for chat commands"; fi
   sendMessageToTerminal "${COLOR_RESET}"
   debug "CHAT_MODE: ${CHAT_MODE}"
-  debug "TIMEOUT: ${TIMEOUT} seconds"
   debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
+  debug "LOG_DIRECTORY: ${LOG_DIRECTORY}"
+  debug "DEBUG_MODE: ${DEBUG_MODE}"
+  debug "TIMEOUT: ${TIMEOUT}"
   debug "TEXT_WRAP: ${TEXT_WRAP}"
+  debug "TIME_STAMP: ${TIME_STAMP}"
   debug "MESSAGE_LIMIT: ${MESSAGE_LIMIT}"
+  debug "SHOW_EMPTY: ${SHOW_EMPTY}"
 }
 
 allJoinTheChat() {
@@ -508,16 +563,6 @@ allJoinTheChat() {
   for joiningModel in "${models[@]}"; do
     addToContext "*** <$joiningModel> has joined the chat"
   done
-}
-
-exitCleanup() {
-  debug "exitCleanup"
-  echo
-  addToContext "*** <user> has closed the chat"
-  echo -ne "$COLOR_RESET"
-  stty sane 2>/dev/null
-  echo
-  exit $RETURN_SUCCESS
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
@@ -543,15 +588,15 @@ while true; do
   setInstructions
   debug "calling: runCommandWithTimeout"
   echo -n "${COLOR_SYSTEM}*** <$model> is typing...${COLOR_RESET}"
-  response=$(runCommandWithTimeout)
+  message=$(runCommandWithTimeout)
   echo -ne "\r\033[K" # clear line
   debug "called: runCommandWithTimeout"
-  response=$(removeThinking "$response")
+  message=$(removeThinking "$message")
   stopModel "$model"
-  if [ "$SHOW_EMPTY" != 1 ] && [ -z "${response}" ]; then
-    debug "[ERROR] No response from <${model}> within $TIMEOUT seconds"
+  if [ "$SHOW_EMPTY" != 1 ] && [ -z "${message}" ]; then
+    debug "[ERROR] No message from <${model}> within $TIMEOUT seconds"
   else
-    handleCommands "$response" && addToContext "<$model> $response"
+    handleCommands "$message" && addToContext "<$model> $message"
     userReply # In reply mode, user gets to respond after every model message
   fi
 done
