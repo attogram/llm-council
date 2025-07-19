@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.3"
+VERSION="3.4"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -20,6 +20,9 @@ TIME_STAMP=0 # Time Stamps for every message. 0 = no, 1 = yes
 MESSAGE_LIMIT=200 # Word limit for messages, suggested to models in the Chat Instructions
 CHAT_MODE="nouser" # Chat mode: nouser, reply
 SHOW_EMPTY=0 # Show Empty Messages. 0 = no, 1 = yes
+
+RETURN_SUCCESS=0
+RETURN_ERROR=1
 
 banner() {
   echo "
@@ -97,10 +100,10 @@ validateAndSetArgument() {
   local var_name=$3
   if [ -n "$value" ] && [ ${value:0:1} != "-" ]; then
     eval "$var_name='$value'"
-    return 0
+    return $RETURN_SUCCESS
   else
     echo "Error: Argument for $flag is missing" >&2
-    exit 1
+    exit $RETURN_ERROR
   fi
 }
 
@@ -115,7 +118,7 @@ parseCommandLine() {
         ;;
       -h|-help|--help) # help
         usage
-        exit 0
+        exit $RETURN_SUCCESS
         ;;
       -nu|-nouser|--nouser) # Chat mode: no user
         CHAT_MODE="nouser"
@@ -147,7 +150,7 @@ parseCommandLine() {
         ;;
       -v|-version|--version) # version
         echo "$NAME v$VERSION"
-        exit 0
+        exit $RETURN_SUCCESS
         ;;
       -w|-wrap|--wrap) # wrap lines
         validateAndSetArgument "$1" "$2" "TEXT_WRAP"
@@ -155,7 +158,7 @@ parseCommandLine() {
         ;;
       -*|--*=|--*) # unsupported flags
         echo "Error: unsupported argument: $1" >&2
-        exit 1
+        exit $RETURN_ERROR
         ;;
       *) # preserve positional arguments
         topic+="$1"
@@ -171,7 +174,7 @@ setModels() {
   models=($(ollama list | awk '{if (NR > 1) print $1}' | sort)) # Get list of models, sorted alphabetically
   if [ -z "$models" ]; then
     echo "No models found. Please install models with 'ollama pull <model-name>'" >&2
-    exit 1
+    exit $RETURN_ERROR
   fi
   parsedModels=()
   if [ -n "$modelsList" ]; then # If user supplied a model list with -m
@@ -181,7 +184,7 @@ setModels() {
         parsedModels+=("$m")
       else
         echo "Error: model not found: $m" >&2
-        exit 1
+        exit $RETURN_ERROR
       fi
     done
   fi
@@ -192,7 +195,7 @@ setModels() {
   fi
   if [ ${#models[@]} -lt 1 ]; then
     echo "Error: there must be at least 1 model to chat" >&2
-    exit 1
+    exit $RETURN_ERROR
   fi
 }
 
@@ -363,11 +366,13 @@ quitChat() {
   removeModel "$model"
   if [ ${#models[@]} -lt 1 ]; then
     echo; echo "${COLOR_SYSTEM}[SYSTEM] No models remaining. Chat ending.${COLOR_RESET}"
-    exit 0
+    exit $RETURN_SUCCESS
   fi
 }
 
 handleCommands() {
+  YES_COMMAND_HANDLED=1
+  NO_COMMAND_HANDLED=0
   local response="$1"
   # Remove leading/trailing whitespace
   local response=$(echo "$response" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -376,7 +381,7 @@ handleCommands() {
   if [[ "$command" =~ ^/ ]]; then
     debug "handleCommands: command: $command"
   else
-    return 0; # No /command found at start of response
+    return $NO_COMMAND_HANDLED
   fi
   # remove /command from response
   local response=$(echo "$response" | awk '{ sub(/^[^ ]+ */, "", $0); print }')
@@ -385,18 +390,18 @@ handleCommands() {
     /topic)
       if [ -z "$response" ]; then
         sendMessageToTerminal "*** ERROR: No topic to set"
-        return 1; # Command handled
+        return $YES_COMMAND_HANDLED
       fi
       addToContext "*** <$model> changed topic to: $response"
-      return 1; # Command handled
+      return $YES_COMMAND_HANDLED
       ;;
     /quit)
       quitChat "$model" "$response"
-      return 1; # Command handled
+      return $YES_COMMAND_HANDLED
       ;;
   esac
-  if [ "$model" != "user" ]; then
-    return 0; # No /command handled, not the <user>
+  if [ "$model" != "user" ]; then # If model is not an administrator
+    return $NO_COMMAND_HANDLED
   fi
   # Handle Administrator Commands
   case "$command" in
@@ -405,32 +410,32 @@ handleCommands() {
       ;;
     /count) # Count of models currently in chat
       sendMessageToTerminal "There are ${#models[@]} models in the chat."
-      return 1; # Command handled
+      return $YES_COMMAND_HANDLED
       ;;
     /list) # List models currently in chat
       modelsCount=""
       sendMessageToTerminal "There are ${#models[@]} models in the chat: "
       sendMessageToTerminal "$(printf "%s\n" "${models[@]}")"
-      return 1; # Command handled
+      return $YES_COMMAND_HANDLED
       ;;
     /olist) # Ollama list
       sendMessageToTerminal "Models available in Ollama:"
       ollama list | awk '{if (NR > 1) print $1}' | sort
-      return 1; # Command handled
+      return $YES_COMMAND_HANDLED
       ;;
     /kick)
       if [ -z "$response" ]; then
         sendMessageToTerminal "*** ERROR: No model specified to kick"
-        return 1; # Command handled
+        return $YES_COMMAND_HANDLED
       fi
       addToContext "*** <user> kicked <$response> out of the chat"
       removeModel "$response"
-      return 1; # Command handled
+      return $YES_COMMAND_HANDLED
       ;;
     /invite)
       if [ -z "$response" ]; then
         sendMessageToTerminal "*** ERROR: No model specified to invite"
-        return 1; # Command handled
+        return $YES_COMMAND_HANDLED
       fi
       # TODO - check if model exists in Ollama...
       # TODO - check if model is already present in chat...
@@ -438,11 +443,11 @@ handleCommands() {
       models+=("$response")
       round+=("$response")
       addToContext "*** <$response> has joined the chat"
-      return 1; # Command handled
+      return $YES_COMMAND_HANDLED
       ;;
   esac
 
-  return 0; # No /command handled
+  return $NO_COMMAND_HANDLED
 }
 
 startRound() {
@@ -505,14 +510,14 @@ allJoinTheChat() {
   done
 }
 
-function exitCleanup() {
+exitCleanup() {
   debug "exitCleanup"
   echo
   addToContext "*** <user> has closed the chat"
   echo -ne "$COLOR_RESET"
   stty sane 2>/dev/null
   echo
-  exit 0
+  exit $RETURN_SUCCESS
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
