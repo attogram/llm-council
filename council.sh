@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.2"
+VERSION="3.3"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -337,6 +337,17 @@ runCommandWithTimeout() {
   #debug "runCommandWithTimeout: end"
 }
 
+removeModel() {
+  local modelToRemove="$1"
+  local newModels=()
+  for m in "${models[@]}"; do
+    if [ " $m " != " $modelToRemove " ]; then
+      newModels+=("$m")
+    fi
+  done
+  models=("${newModels[@]}")
+}
+
 quitChat() {
   local model="$1"
   local reason="$2"
@@ -349,15 +360,7 @@ quitChat() {
     CHAT_MODE="nouser"
     return
   fi
-  # Remove the model from the models array
-  local newModels=()
-  for m in "${models[@]}"; do
-    if [ " $m " != " $model " ]; then
-      newModels+=("$m")
-    fi
-  done
-  models=("${newModels[@]}")
-  # Check if we still have enough models to continue
+  removeModel "$model"
   if [ ${#models[@]} -lt 1 ]; then
     echo; echo "${COLOR_SYSTEM}[SYSTEM] No models remaining. Chat ending.${COLOR_RESET}"
     exit 0
@@ -377,6 +380,7 @@ handleCommands() {
   fi
   # remove /command from response
   local response=$(echo "$response" | awk '{ sub(/^[^ ]+ */, "", $0); print }')
+  # Handle commands
   case "$command" in
     /topic)
       if [ -z "$response" ]; then
@@ -391,6 +395,53 @@ handleCommands() {
       return 1; # Command handled
       ;;
   esac
+  if [ "$model" != "user" ]; then
+    return 0; # No /command handled, not the <user>
+  fi
+  # Handle Administrator Commands
+  case "$command" in
+    /exit|/stop|/end|/close|/bye)
+      exitCleanup
+      ;;
+    /count) # Count of models currently in chat
+      sendMessageToTerminal "There are ${#models[@]} models in the chat."
+      return 1; # Command handled
+      ;;
+    /list) # List models currently in chat
+      modelsCount=""
+      sendMessageToTerminal "There are ${#models[@]} models in the chat: "
+      sendMessageToTerminal "$(printf "%s\n" "${models[@]}")"
+      return 1; # Command handled
+      ;;
+    /olist) # Ollama list
+      sendMessageToTerminal "Models available in Ollama:"
+      ollama list | awk '{if (NR > 1) print $1}' | sort
+      return 1; # Command handled
+      ;;
+    /kick)
+      if [ -z "$response" ]; then
+        sendMessageToTerminal "*** ERROR: No model specified to kick"
+        return 1; # Command handled
+      fi
+      addToContext "*** <user> kicked <$response> out of the chat"
+      removeModel "$response"
+      return 1; # Command handled
+      ;;
+    /invite)
+      if [ -z "$response" ]; then
+        sendMessageToTerminal "*** ERROR: No model specified to invite"
+        return 1; # Command handled
+      fi
+      # TODO - check if model exists in Ollama...
+      # TODO - check if model is already present in chat...
+      #addToContext "*** <user> invited <$response> to the chat"
+      models+=("$response")
+      round+=("$response")
+      addToContext "*** <$response> has joined the chat"
+      return 1; # Command handled
+      ;;
+  esac
+
   return 0; # No /command handled
 }
 
@@ -473,7 +524,7 @@ intro
 setTopic
 allJoinTheChat
 context=""
-if [ -n "$topic" ]; then # If /topic wasn't set on the command line
+if [ -n "$topic" ]; then # if topic was set
   addToContext "*** <user> changed topic to: $topic"
 fi
 setInstructions; saveInstructionsToLog
