@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.8"
+VERSION="3.9"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -36,23 +36,27 @@ banner() {
 
 usage() {
   me=$(basename "$0")
-  echo "$NAME"; echo
-  echo "Usage:"
-  echo "  ./$me [flags]"
-  echo "  ./$me [flags] [topic]"
-  echo; echo "Flags:";
-  echo "  -m model1,model2  Use specific models (comma separated list)"
-  echo "  -r,  -reply       User may respond after every model message"
-  echo "  -nu, -nouser      No user in chat, only models (Default)"
-  echo "  -to, -timeout     Set timeout to # seconds"
-  echo "  -ts, -timestamp   Show Date and time for every message"
-  echo "  -se, -showempty   Show Empty messages (from timeouts)"
-  echo "  -w,  -wrap        Text wrap lines to # characters"
-  echo "  -nc, -nocolors    Do not use ANSI colors"
-  echo "  -d,  -debug       Debug Mode"
-  echo "  -v,  -version     Show version information"
-  echo "  -h,  -help        Help for $NAME"
-  echo '  [topic]           Set the chat room topic (Optional)'
+  echo "
+$NAME v$VERSION
+
+Usage:
+  ./$me [flags]
+  ./$me [flags] [topic]
+
+Flags:
+  -m model1,model2  Use specific models (comma separated list)
+  -r,  -reply       User may respond after every model message
+  -nu, -nouser      No user in chat, only models (Default)
+  -to, -timeout     Set timeout to # seconds
+  -ts, -timestamp   Show Date and time for every message
+  -se, -showempty   Show Empty messages (from timeouts)
+  -w,  -wrap        Text wrap lines to # characters
+  -nc, -nocolors    Do not use ANSI colors
+  -d,  -debug       Debug Mode
+  -v,  -version     Show version information
+  -h,  -help        Help for $NAME
+  [topic]           Set the chat room topic (Optional)
+"
 }
 
 sendToTerminal() {
