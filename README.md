@@ -16,9 +16,10 @@ Usage:
   ./council.sh [flags] [topic]
 
 Flags:
-  -m model1,model2  Use specific models (comma separated list)
-  -r,  -reply       User may respond after every model message
-  -nu, -nouser      No user in chat, only models (Default)
+  -m,  -models      Specify which models join the chat (comma separated list)
+  -nm, -nomodels    Start chat with no models
+  -r,  -reply       User may respond after every model message (Default)
+  -nu, -nouser      No user in chat, only models
   -to, -timeout     Set timeout to # seconds
   -ts, -timestamp   Show Date and time for every message
   -se, -showempty   Show Empty messages (from timeouts)
@@ -47,8 +48,9 @@ Admin Commands:
 /ps              - Show running models in Ollama
 /kick [model]    - Kick model out of the chat
 /invite [model]  - Invite model into the chat
-/rules           - View the Chat Instructions sent to models
-/context         - View the Chat Log
+/rules           - View the Chat Rules sent to models
+/log             - View the Chat Log
+/round           - List models in the current round
 /clear           - Clear the screen
 /help            - This command list
 ```
@@ -59,7 +61,7 @@ Model chats are in the round:
 - A round starts with a list of all models, randomly sorted.
 - The first model in the round is asked to chat.
   - The model must respond within the timeout period, otherwise its response is truncated.
-- When the first model finishes, it is removed from the round.
+- When the first model replies, it is removed from the round.
 - If the user is in the chat, they are given the option to respond.
 - Then the next model in the round is asked to chat, and so on.
 - When the round is done (all models have chatted), then a new round is started.
@@ -68,11 +70,9 @@ Model chats are in the round:
 
 Logs are saved in the ```./logs``` directory.
 
-Every time the script is run, the model instructions and chat log are saved to files.
+The Chat Rules are saved to ```./logs/rules.txt```
 
-The model instructions are saved to ```./logs/instructions.txt```
-
-The chat log is saved to ```./logs/messages.txt```
+The Chat Log is saved to ```./logs/messages.txt```
 
 New chats are appended to the message log.
 
@@ -80,21 +80,19 @@ New chats are appended to the message log.
 
 - Run the council with all available Ollama models, 
   entering the prompt interactively,
-  and with no user interaction:
+  with user interaction (Press Enter to skip your turn)
   ```
   ./council.sh
   ```
 
 - Run the council with all available Ollama models,
   entering the prompt interactively,
-  and prompt user to respond after every model message.
-  (Press Enter to skip your turn)
+  with no user interaction:
   ```
-  ./council.sh -reply
+  ./council.sh -nouser
   ```
 
-- Run the council with all available Ollama models,
-  setting the /topic on the command line:
+- Set the /topic on the command line:
   ```
   ./council.sh "Let us work together and create world peace"
   ```
@@ -106,20 +104,20 @@ New chats are appended to the message log.
   ```
   echo "Let us work together and create world peace" | ./council.sh
   ```
-- Specify which models to use in the council:
+
+- Specify which models to use:
   ```
   ./council.sh -models gemma3n:e4b,mistral:7b,granite3.3:8b
   ```
-
-- Chat between one model and the user:
-  ```
-  ./council.sh -reply -models mistral:7b
-  ```
   
-- Set the timeout (in seconds) for model responses.
-  (Default is 30 seconds)
+- Set the timeout (in seconds) for model responses (Default is 30 seconds)
   ```
   ./council.sh -timeout 60
+  ```
+
+- Show empty messages (from timeouts)
+  ```
+  ./council.sh -showempty
   ```
 
 - Show timestamps with every message:
@@ -127,9 +125,14 @@ New chats are appended to the message log.
   ./council.sh -timestamp
   ```
 
-- Wrap lines to # characters
+- Wrap lines to # characters:
   ```
   ./council.sh -wrap 80
+  ```
+
+- Start the chat with no models:
+  ```
+  ./council.sh -nomodels
   ```
 
 - Usage help:

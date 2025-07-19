@@ -6,30 +6,30 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.13"
+VERSION="3.14"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
 
-context="" # The Chat Log
-model="" # The current active model
-models=() # List of models currently in chat
-round=() # List of models in the current round
+context=""    # The Chat Log
+model=""      # The current active model
+models=()     # List of models currently in chat
+round=()      # List of models in the current round
 modelsList="" # User specified models list
-topic="" # The current topic
-chatInstructions="" # Chat Instructions sent in the prompt to models
-startWithNoModels=0 # Start with No models (0 = no, 1 = yes)
-responseColorToggle=0 # Track alternating response color schemes
+topic=""      # The current topic
+rules=""      # Chat Rules sent in the prompt to models
+noModels=0    # Start with No models (0 = no, 1 = yes)
+colorToggle=0 # Track alternating response color schemes
 
-CHAT_MODE="reply" # Chat mode: nouser, reply
+CHAT_MODE="reply"  # Chat mode: nouser, reply
 CHAT_LOG_LINES=500 # number of lines in the chat log
-LOG_DIRECTORY="./logs" # Log Directory (no slash at end)
-DEBUG_MODE=0 # Debug mode. 1 = debug on, 2 = debug off
-TIMEOUT=20 # number of seconds to wait for model response
-TEXT_WRAP=0 # Text wrap. 0 = no wrap, >0 = wrap line
-TIME_STAMP=0 # Time Stamps for every message. 0 = no, 1 = yes
-MESSAGE_LIMIT=200 # Word limit for messages, suggested to models in the Chat Instructions
-SHOW_EMPTY=0 # Show Empty Messages. 0 = no, 1 = yes
+LOG_DIR="./logs"   # Log Directory (no slash at end)
+DEBUG_MODE=0       # Debug mode. 1 = debug on, 2 = debug off
+TIMEOUT=20         # Seconds to wait for model response
+TEXT_WRAP=0        # Text wrap. 0 = no wrap, >0 = wrap line
+TIME_STAMP=0       # Time Stamps for every message. 0 = no, 1 = yes
+MESSAGE_LIMIT=200  # Word limit for messages, suggested to models in the Chat Rules
+SHOW_EMPTY=0       # Show Empty Messages. 0 = no, 1 = yes
 
 RETURN_SUCCESS=0
 RETURN_ERROR=1
@@ -85,7 +85,7 @@ Admin Commands:
 /ps              - Show running models in Ollama
 /kick [model]    - Kick model out of the chat
 /invite [model]  - Invite model into the chat
-/rules           - View the Chat Instructions sent to models
+/rules           - View the Chat Rules sent to models
 /log             - View the Chat Log
 /round           - List models in the current round
 /clear           - Clear the screen
@@ -93,8 +93,8 @@ Admin Commands:
 "
 }
 
-setInstructions() {
-  chatInstructions="You are in a group chat with ${#models[@]} members.
+setRules() {
+  rules="You are in a group chat with ${#models[@]} members.
 You are user <${model:-user}>.
 If you want to mention another user, you MUST use syntax: @username.
 If you want to leave the chat, send ONLY the 1 line command: /quit <optional reason>
@@ -191,7 +191,7 @@ parseCommandLine() {
         shift 2
         ;;
       -nm|-nomodels|--nomodels)
-        startWithNoModels=1
+        noModels=1
         shift
         ;;
       -se|-showempty|--showempty|-empty|--empty) # Show empty messages
@@ -229,7 +229,7 @@ parseCommandLine() {
 }
 
 setModels() {
-  if [ "$startWithNoModels" -eq 1 ]; then
+  if [ "$noModels" -eq 1 ]; then
     return
   fi
   models=($(ollama list | awk '{if (NR > 1) print $1}' | sort)) # Get list of models, sorted alphabetically
@@ -292,12 +292,12 @@ displayContextAdded() {
   fi
   if [ -n "$name" ]; then
     # Apply bold formatting to <name> at start of line, toggle color scheme
-    if [ $responseColorToggle -eq 0 ]; then
+    if [ $colorToggle -eq 0 ]; then
       display="$timestamp${COLOR_RESPONSE_1}${TEXT_BOLD}$name${TEXT_NORMAL}${COLOR_RESPONSE_1}$content${COLOR_RESET}"
-      responseColorToggle=1
+      colorToggle=1
     else
       display="$timestamp${COLOR_RESPONSE_2}${TEXT_BOLD}$name${TEXT_NORMAL}${COLOR_RESPONSE_2}$content${COLOR_RESET}"
-      responseColorToggle=0
+      colorToggle=0
     fi
   else
     display="${COLOR_SYSTEM}$message${COLOR_RESET}" # System message (Not a user or model message)
@@ -312,18 +312,18 @@ showTimestamp() {
 }
 
 setupLogging() {
-   if [ ! -d "$LOG_DIRECTORY" ]; then # if log directory doesn't exist
-       mkdir "$LOG_DIRECTORY" # create it # 2>/dev/null
+   if [ ! -d "$LOG_DIR" ]; then # if log directory doesn't exist
+       mkdir "$LOG_DIR" # create it # 2>/dev/null
    fi
-   echo -e "\nChat Log Started: $(date '+%Y-%m-%d %H:%M:%S')\n" >> "${LOG_DIRECTORY}/messages.txt"
+   echo -e "\nChat Log Started: $(date '+%Y-%m-%d %H:%M:%S')\n" >> "${LOG_DIR}/messages.txt"
 }
 
-saveInstructionsToLog() {
-  echo -e "$chatInstructions" > "${LOG_DIRECTORY}/instructions.txt"
+saveRulesToLog() {
+  echo -e "$rules" > "${LOG_DIR}/rules.txt"
 }
 
 saveMessageToLog() {
-  echo -e "$1" >> "${LOG_DIRECTORY}/messages.txt" # append message to message log
+  echo -e "$1" >> "${LOG_DIR}/messages.txt" # append message to message log
 }
 
 addToContext() {
@@ -351,7 +351,7 @@ removeThinking() {
 
 ollamaRunWithTimeout() {
   (
-    ollama run "$model" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null
+    ollama run "$model" --hidethinking -- "${rules}${context}" 2>/dev/null
   ) &
   local pidOllama=$!
   (
@@ -461,8 +461,8 @@ handleAdminCommands() {
       addToContext "*** <$message> has joined the chat"
       return $YES_COMMAND_HANDLED
       ;;
-    /rules|/instructions|/instruction) # Show the Chat Instructions
-      sendToTerminal "\n$chatInstructions"
+    /rules|/rule|/instruction|/instructions) # Show the Chat Rules
+      sendToTerminal "\n$rules"
       return $YES_COMMAND_HANDLED
       ;;
     /log|/logs|/messages|/msgs|/context) # Show the Chat Log
@@ -500,7 +500,7 @@ handleBasicCommands() {
       addToContext "*** <$model> changed topic to: $message"
       return $YES_COMMAND_HANDLED
       ;;
-    /quit)
+    /quit|/leave)
       quitChat "$model" "$message"
       return $YES_COMMAND_HANDLED
       ;;
@@ -587,7 +587,7 @@ intro() {
   sendToTerminal "$COLOR_RESET"
   debug "CHAT_MODE: $CHAT_MODE"
   debug "CHAT_LOG_LINES: $CHAT_LOG_LINES"
-  debug "LOG_DIRECTORY: $LOG_DIRECTORY"
+  debug "LOG_DIR: $LOG_DIR"
   debug "DEBUG_MODE: $DEBUG_MODE"
   debug "TIMEOUT: $TIMEOUT"
   debug "TEXT_WRAP: $TEXT_WRAP"
@@ -616,8 +616,8 @@ setupLogging
 intro
 setTopic
 allJoinTheChat
-setInstructions
-saveInstructionsToLog
+setRules
+saveRulesToLog
 startRound
 if [ -z "$models" ]; then
   notice "No models in the chat. Please /invite some models"
@@ -632,7 +632,7 @@ while true; do
   round=("${round[@]:1}") # Remove speaker from round
   if [ ${#round[@]} -eq 0 ]; then startRound; fi # If everyone has spoken, then restart round
   debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
-  setInstructions
+  setRules
   debug "calling: runCommandWithTimeout"
   echo -n "${COLOR_SYSTEM}*** <$model> is typing...${COLOR_RESET}"
   message=$(ollamaRunWithTimeout)
