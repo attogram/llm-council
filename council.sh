@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.6"
+VERSION="3.7"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -71,8 +71,9 @@ commandHelp() {
   sendToTerminal "Admin Commands:\n"
   sendToTerminal "/stop            - Close the chat and exit"
   sendToTerminal "/count           - Show number of models in chat"
-  sendToTerminal "/list            - list current models in chat"
-  sendToTerminal "/olist           - list available models in Ollama"
+  sendToTerminal "/list            - List current models in chat"
+  sendToTerminal "/olist           - Show available models in Ollama"
+  sendToTerminal "/ps              - Show running models in Ollama"
   sendToTerminal "/kick [model]    - Kick a model out of the chat"
   sendToTerminal "/invite [model]  - Invite a model into the chat"
 }
@@ -362,6 +363,7 @@ quitChat() {
   fi
   removeModel "$model"
   if [ ${#models[@]} -lt 1 ]; then
+    # TODO - if user is in chat, do not end
     echo; echo "${COLOR_SYSTEM}*** No models remaining. Chat ending.${COLOR_RESET}"
     exit $RETURN_SUCCESS
   fi
@@ -401,6 +403,10 @@ handleAdminCommands() {
     /olist) # Ollama list
       sendToTerminal "\nModels available in Ollama:\n"
       ollama list | awk '{if (NR > 1) print $1}' | sort
+      return $YES_COMMAND_HANDLED
+      ;;
+    /ps) # Ollama ps
+      ollama ps
       return $YES_COMMAND_HANDLED
       ;;
     /kick)
