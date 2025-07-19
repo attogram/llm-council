@@ -48,6 +48,7 @@ Admin Commands:
 /kick [model]    - Kick model out of the chat
 /invite [model]  - Invite model into the chat
 /rules           - View the Chat Instructions sent to models
+/context         - View the Chat Log
 /clear           - Clear the screen
 /help            - This command list
 ```

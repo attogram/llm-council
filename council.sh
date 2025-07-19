@@ -10,6 +10,7 @@ VERSION="3.9"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
+context=""
 
 CHAT_MODE="nouser" # Chat mode: nouser, reply
 CHAT_LOG_LINES=500 # number of lines in the chat log
@@ -84,6 +85,7 @@ Admin Commands:
 /kick [model]    - Kick model out of the chat
 /invite [model]  - Invite model into the chat
 /rules           - View the Chat Instructions sent to models
+/context         - View the Chat Log
 /clear           - Clear the screen
 /help            - This command list
 "
@@ -304,22 +306,14 @@ saveMessageToLog() {
 
 addToContext() {
   local message="$1"
-  #debug "addToContext: start: [$message]"
   message="$(showTimestamp)${message}" # optional timestamp
-  #debug "addToContext: times: [$message]"
   if [ "$TEXT_WRAP" -ge 1 ]; then
     message=$(echo -e "$message" | fold -s -w "$TEXT_WRAP")
-    #debug "addToContext: wrap: [$message]"
   fi
-  #debug "addToContext: append context: [$message]"
   context+="\n$message" # add the message to the context
-  #debug "addToContext: trim context: $CHAT_LOG_LINES lines"
   context=$(echo "$context" | tail -n "$CHAT_LOG_LINES") # trim context to $CHAT_LOG_LINES lines
-  #debug "addToContext: saveMessageToLog: [$message]"
   saveMessageToLog "$message"
-  #debug "addToContext: displayContextAdded: [$message]"
   displayContextAdded "$message"
-  #debug "addToContext: end"
 }
 
 removeThinking() {
@@ -449,6 +443,10 @@ handleAdminCommands() {
       ;;
     /clear|/cls)
       clear
+      return $YES_COMMAND_HANDLED
+      ;;
+    /context|/messages|/msgs|/log)
+      sendToTerminal "$context"
       return $YES_COMMAND_HANDLED
       ;;
     *)
@@ -588,7 +586,6 @@ setupLogging
 intro
 setTopic
 allJoinTheChat
-context=""
 if [ -n "$topic" ]; then # if topic was set
   addToContext "*** <user> changed topic to: $topic"
 fi
