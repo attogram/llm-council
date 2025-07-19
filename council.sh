@@ -6,11 +6,20 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.10"
+VERSION="3.11"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
-context=""
+
+context="" # The Chat Log
+model="" # The current active model
+models=() # List of models currently in chat
+round=() # List of models in the current round
+modelsList="" # User specified models list
+topic="" # The current topic
+chatInstructions="" # Chat Instructions sent in the prompt to models
+startWithNoModels=0 # Start with No models (0 = no, 1 = yes)
+responseColorToggle=0 # Track alternating response color schemes
 
 CHAT_MODE="nouser" # Chat mode: nouser, reply
 CHAT_LOG_LINES=500 # number of lines in the chat log
@@ -45,7 +54,8 @@ Usage:
   ./$me [flags] [topic]
 
 Flags:
-  -m model1,model2  Use specific models (comma separated list)
+  -m,  -models      Specify which models join the chat (comma separated list)
+  -nm, -nomodels    Start chat with no models
   -r,  -reply       User may respond after every model message
   -nu, -nouser      No user in chat, only models (Default)
   -to, -timeout     Set timeout to # seconds
@@ -78,15 +88,10 @@ Admin Commands:
 /invite [model]  - Invite model into the chat
 /rules           - View the Chat Instructions sent to models
 /context         - View the Chat Log
+/round           - List models in the current round
 /clear           - Clear the screen
 /help            - This command list
 "
-}
-
-debug() {
-  if [ "$DEBUG_MODE" -eq 1 ]; then
-    >&2 echo -e "${COLOR_DEBUG}[$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
-  fi
 }
 
 setInstructions() {
@@ -100,7 +105,6 @@ Be concise. You MUST limit your response to $MESSAGE_LIMIT words or less.
 
 Chat Log:
 "
-  #debug "chatInstructions:\n---\n${chatInstructions}${context}\n---"
 }
 
 yesColors() {
@@ -111,7 +115,6 @@ yesColors() {
   TEXT_NORMAL=$'\e[22m'             # Normal style text
   TEXT_BOLD=$'\e[1m'                # Bold style text
   COLOR_RESET=$'\e[0m'              # Reset terminal colors
-  response_toggle=0                 # Track alternating response colors
 }
 
 noColors() {
@@ -122,6 +125,19 @@ noColors() {
   TEXT_NORMAL=""
   TEXT_BOLD=""
   COLOR_RESET=""
+}
+
+debug() {
+  if [ "$DEBUG_MODE" -eq 1 ]; then
+    >&2 echo -e "${COLOR_DEBUG}[$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
+  fi
+}
+
+userIsInChat() {
+  if [ "$CHAT_MODE" == "reply" ]; then
+    return $RETURN_SUCCESS
+  fi
+  return $RETURN_ERROR
 }
 
 validateAndSetArgument() {
@@ -166,6 +182,10 @@ parseCommandLine() {
         validateAndSetArgument "$1" "$2" "modelsList"
         shift 2
         ;;
+      -nm|-nomodels|--nomodels)
+        startWithNoModels=1
+        shift
+        ;;
       -se|-showempty|--showempty|-empty|--empty) # Show empty messages
         SHOW_EMPTY=1
         shift
@@ -187,7 +207,7 @@ parseCommandLine() {
         shift 2
         ;;
       -*|--*=|--*) # unsupported flags
-        echo "Error: unsupported argument: $1" >&2
+        echo "Error: Unsupported flag: $1" >&2
         exit $RETURN_ERROR
         ;;
       *) # preserve positional arguments
@@ -197,23 +217,26 @@ parseCommandLine() {
     esac
   done
   # set positional arguments in their proper place
-  eval set -- "${topic}"
+  eval set -- "$topic"
 }
 
 setModels() {
+  if [ "$startWithNoModels" -eq 1 ]; then
+    return
+  fi
   models=($(ollama list | awk '{if (NR > 1) print $1}' | sort)) # Get list of models, sorted alphabetically
   if [ -z "$models" ]; then
-    echo "No models found. Please install models with 'ollama pull <model-name>'" >&2
+    echo "ERROR: No models installed in Ollama. Please install models with 'ollama pull <model-name>'" >&2
     exit $RETURN_ERROR
   fi
-  parsedModels=()
+  local parsedModels=()
   if [ -n "$modelsList" ]; then # If user supplied a model list with -m
     IFS=',' read -ra modelsListArray <<< "$modelsList" # parse csv into modelsListArray
     for m in "${modelsListArray[@]}"; do
       if [[ " ${models[*]} " =~ " $m " ]]; then # if model exists
         parsedModels+=("$m")
       else
-        echo "Error: model not found: $m" >&2
+        echo "ERROR: model not found: $m" >&2
         exit $RETURN_ERROR
       fi
     done
@@ -224,8 +247,8 @@ setModels() {
     models=("${sortedParsedModels[@]}")
   fi
   if [ ${#models[@]} -lt 1 ]; then
-    echo "Error: there must be at least 1 model to chat" >&2
-    exit $RETURN_ERROR
+    echo "NOTICE: there are no models in the chat" >&2
+    return #exit $RETURN_ERROR
   fi
 }
 
@@ -269,16 +292,15 @@ displayContextAdded() {
   fi
   if [ -n "$name" ]; then
     # Apply bold formatting to <name> at start of line, toggle color scheme
-    if [ $response_toggle -eq 0 ]; then
-      display="${timestamp}${COLOR_RESPONSE_1}${TEXT_BOLD}${name}${TEXT_NORMAL}${COLOR_RESPONSE_1}${content}${COLOR_RESET}"
-      response_toggle=1
+    if [ $responseColorToggle -eq 0 ]; then
+      display="$timestamp${COLOR_RESPONSE_1}${TEXT_BOLD}$name${TEXT_NORMAL}${COLOR_RESPONSE_1}$content${COLOR_RESET}"
+      responseColorToggle=1
     else
-      display="${timestamp}${COLOR_RESPONSE_2}${TEXT_BOLD}${name}${TEXT_NORMAL}${COLOR_RESPONSE_2}${content}${COLOR_RESET}"
-      response_toggle=0
+      display="$timestamp${COLOR_RESPONSE_2}${TEXT_BOLD}$name${TEXT_NORMAL}${COLOR_RESPONSE_2}$content${COLOR_RESET}"
+      responseColorToggle=0
     fi
   else
-    # Not a user/model message, is a system message
-    display="${COLOR_SYSTEM}${message}${COLOR_RESET}"
+    display="${COLOR_SYSTEM}$message${COLOR_RESET}" # System message (Not a user or model message)
   fi
   sendToTerminal "$display"
 }
@@ -329,16 +351,16 @@ removeThinking() {
 
 ollamaRunWithTimeout() {
   (
-    ollama run "${model}" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null
+    ollama run "$model" --hidethinking -- "${chatInstructions}${context}" 2>/dev/null
   ) &
-  pidOllama=$!
+  local pidOllama=$!
   (
     sleep "$TIMEOUT"
     if kill -0 $pidOllama 2>/dev/null; then
       kill $pidOllama 2>/dev/null
     fi
   ) &
-  pidOllamaTimeout=$!
+  local pidOllamaTimeout=$!
   wait $pidOllama 2>/dev/null
   kill $pidOllamaTimeout 2>/dev/null
 }
@@ -388,11 +410,11 @@ handleAdminCommands() {
   local command="$1"
   local message="$2"
   case "$command" in
-    /help)
+    /help) # Command help
       sendToTerminal "$(commandHelp)"
       return $YES_COMMAND_HANDLED
       ;;
-    /exit|/stop|/end|/close|/bye)
+    /exit|/stop|/end|/close|/bye) # End the chat
       exitCleanup
       ;;
     /count) # Count of models currently in chat
@@ -414,7 +436,7 @@ handleAdminCommands() {
       ollama ps
       return $YES_COMMAND_HANDLED
       ;;
-    /kick)
+    /kick) # Kick a model out of the chat
       if [ -z "$message" ]; then
         sendToTerminal "*** ERROR: No model specified to kick"
         return $YES_COMMAND_HANDLED
@@ -424,7 +446,7 @@ handleAdminCommands() {
       removeModel "$message"
       return $YES_COMMAND_HANDLED
       ;;
-    /invite)
+    /invite) # Invite a model to join the chat
       if [ -z "$message" ]; then
         sendToTerminal "*** ERROR: No model specified to invite"
         return $YES_COMMAND_HANDLED
@@ -437,16 +459,21 @@ handleAdminCommands() {
       addToContext "*** <$message> has joined the chat"
       return $YES_COMMAND_HANDLED
       ;;
-    /rules|/instructions|/instruction)
+    /rules|/instructions|/instruction) # Show the Chat Instructions
       sendToTerminal "$chatInstructions"
       return $YES_COMMAND_HANDLED
       ;;
-    /clear|/cls)
-      clear
+    /context|/messages|/msgs|/log) # Show the Chat Log
+      sendToTerminal "$context"
       return $YES_COMMAND_HANDLED
       ;;
-    /context|/messages|/msgs|/log)
-      sendToTerminal "$context"
+    /round) # Show current round
+      sendToTerminal "\nCurrent Round:\n"
+      sendToTerminal "$(printf "%s\n" "${round[@]}")"
+      return $YES_COMMAND_HANDLED
+      ;;
+    /clear|/cls) # clear the screen
+      clear
       return $YES_COMMAND_HANDLED
       ;;
     *)
@@ -461,12 +488,13 @@ handleBasicCommands() {
   local command="$1"
   local message="$2"
   case "$command" in
-    /topic)
+    /topic) # Change the topic
       if [ -z "$message" ]; then
         # TODO - differentiate between user /topic (show error) and model /topic
         sendToTerminal "*** ERROR: No topic to set"
         return $YES_COMMAND_HANDLED
       fi
+      topic="$message"
       addToContext "*** <$model> changed topic to: $message"
       return $YES_COMMAND_HANDLED
       ;;
@@ -490,7 +518,7 @@ handleCommands() {
   local message=$(echo "$message" | awk '{ sub(/^[^ ]+ */, "", $0); print }') # remove /command from message
 
   handleBasicCommands "$command" "$message"
-  handleBasicCommandsReturn=$?
+  local handleBasicCommandsReturn=$?
   if [[ "$handleBasicCommandsReturn" -eq "$YES_COMMAND_HANDLED" ]]; then
     return $YES_COMMAND_HANDLED
   fi
@@ -500,7 +528,7 @@ handleCommands() {
   fi
 
   handleAdminCommands "$command" "$message"
-  handleAdminCommandsReturn=$?
+  local handleAdminCommandsReturn=$?
   if [[ "$handleAdminCommandsReturn" -eq "$YES_COMMAND_HANDLED" ]]; then
     return $YES_COMMAND_HANDLED
   fi
@@ -509,9 +537,7 @@ handleCommands() {
 
 startRound() {
   round=("${models[@]}")
-  # shuffle round
-  local n=${#round[@]}
-  for ((i = n - 1; i > 0; i--)); do
+  for ((i = ${#round[@]} - 1; i > 0; i--)); do # shuffle round
     local j=$((RANDOM % (i + 1)))
     local temp=${round[i]}
     round[i]=${round[j]}
@@ -522,7 +548,6 @@ startRound() {
 
 stopModel() {
   ollama stop "$1"
-  debug "$(ollama ps)"
   debug "Stopped model: $1"
 }
 
@@ -541,8 +566,8 @@ userReply() {
     return
   fi
   handleCommands "$userMessage"
-  returnStatus=$? # get return status code of handleCommands
-  if [[ "$returnStatus" -eq "$NO_HANDLED_COMMAND" ]]; then
+  local handleCommandsReturn=$? # get return status code of handleCommands
+  if [[ "$handleCommandsReturn" -eq "$NO_HANDLED_COMMAND" ]]; then
     addToContext "<$model> $userMessage"
     return
   fi
@@ -552,26 +577,29 @@ userReply() {
 
 intro() {
   sendToTerminal "${COLOR_SYSTEM}\n$(banner)\n$NAME v$VERSION\n"
-  introMsg="${#models[@]} models"
+  local introMsg="${#models[@]} models"
   if [[ "$CHAT_MODE" == "reply" ]]; then introMsg+=", and 1 user,"; fi
   introMsg+=" invited to the chat room."
   sendToTerminal "$introMsg"
   if [[ "$CHAT_MODE" == "reply" ]]; then sendToTerminal "\nUse ${TEXT_BOLD}/help${TEXT_NORMAL} for chat commands"; fi
-  sendToTerminal "${COLOR_RESET}"
-  debug "CHAT_MODE: ${CHAT_MODE}"
-  debug "CHAT_LOG_LINES: ${CHAT_LOG_LINES}"
-  debug "LOG_DIRECTORY: ${LOG_DIRECTORY}"
-  debug "DEBUG_MODE: ${DEBUG_MODE}"
-  debug "TIMEOUT: ${TIMEOUT}"
-  debug "TEXT_WRAP: ${TEXT_WRAP}"
-  debug "TIME_STAMP: ${TIME_STAMP}"
-  debug "MESSAGE_LIMIT: ${MESSAGE_LIMIT}"
-  debug "SHOW_EMPTY: ${SHOW_EMPTY}"
+  sendToTerminal "$COLOR_RESET"
+  debug "CHAT_MODE: $CHAT_MODE"
+  debug "CHAT_LOG_LINES: $CHAT_LOG_LINES"
+  debug "LOG_DIRECTORY: $LOG_DIRECTORY"
+  debug "DEBUG_MODE: $DEBUG_MODE"
+  debug "TIMEOUT: $TIMEOUT"
+  debug "TEXT_WRAP: $TEXT_WRAP"
+  debug "TIME_STAMP: $TIME_STAMP"
+  debug "MESSAGE_LIMIT: $MESSAGE_LIMIT"
+  debug "SHOW_EMPTY: $SHOW_EMPTY"
 }
 
 allJoinTheChat() {
   if [[ "$CHAT_MODE" == "reply" ]]; then
     addToContext "*** <user> has joined the chat as administrator"
+  fi
+  if [ -n "$topic" ]; then # if topic was set
+    addToContext "*** <user> changed topic to: $topic"
   fi
   for joiningModel in "${models[@]}"; do
     addToContext "*** <$joiningModel> has joined the chat"
@@ -579,20 +607,25 @@ allJoinTheChat() {
 }
 
 export OLLAMA_MAX_LOADED_MODELS=1
-yesColors
-parseCommandLine "$@"
+yesColors # Turn on ANSI color scheme
+parseCommandLine "$@" # Get command line parameters
 setModels
 setupLogging
 intro
 setTopic
 allJoinTheChat
-if [ -n "$topic" ]; then # if topic was set
-  addToContext "*** <user> changed topic to: $topic"
-fi
-setInstructions; saveInstructionsToLog
-userReply # In Reply mode, user gets to send the first message
+setInstructions
+saveInstructionsToLog
 startRound
+if [ -z "$models" ]; then
+  echo "NOTICE: No models in the chat. Please /invite some models"
+  CHAT_MODE="reply"
+fi
 while true; do
+  userReply # In reply mode, user gets to respond after every model message
+  if [ -z "$models" ]; then
+    continue # No models in chat
+  fi
   model="${round[0]}" # Get first speaker from round
   round=("${round[@]:1}") # Remove speaker from round
   if [ ${#round[@]} -eq 0 ]; then startRound; fi # If everyone has spoken, then restart round
@@ -605,11 +638,10 @@ while true; do
   debug "called: runCommandWithTimeout"
   message=$(removeThinking "$message")
   stopModel "$model"
-  if [ "$SHOW_EMPTY" != 1 ] && [ -z "${message}" ]; then
-    debug "[ERROR] No message from <${model}> within $TIMEOUT seconds"
+  if [ "$SHOW_EMPTY" != 1 ] && [ -z "$message" ]; then
+    debug "[ERROR] No message from <$model> within $TIMEOUT seconds"
   else
     handleCommands "$message" && addToContext "<$model> $message"
-    userReply # In reply mode, user gets to respond after every model message
   fi
 done
 exitCleanup
