@@ -9,7 +9,7 @@ NAME="llm-council"
 VERSION="3.2"
 URL="https://github.com/attogram/llm-council"
 
-trap exitCleanup INT SIGINT
+trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
 
 CHAT_LOG_LINES=500 # number of lines in the chat log
 LOG_DIRECTORY="./logs" # Log Directory (no slash at end)
@@ -367,20 +367,31 @@ quitChat() {
 handleCommands() {
   local response="$1"
   # Remove leading/trailing whitespace
-  local trimmedResponse=$(echo "$response" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-  # check if it matches /topic pattern
-  if [[ "$trimmedResponse" =~ ^/topic[[:space:]]+(.+)$ ]]; then
-    addToContext "*** <$model> changed topic to: ${BASH_REMATCH[1]}"
-    return 1;
-  # To leave the chat room, send ONLY the command: /quit <optional reason>
-  elif [[ "$trimmedResponse" = "/quit" ]]; then
-    quitChat "$model"
-    return 1;
-  elif [[ "$trimmedResponse" =~ ^/quit[[:space:]]+(.+)$ ]]; then
-    quitChat "$model" "${BASH_REMATCH[1]}"
-    return 1;
+  local response=$(echo "$response" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  # Get the first word in response, in lowercase
+  local command=$(echo "$response" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+  if [[ "$command" =~ ^/ ]]; then
+    debug "handleCommands: command: $command"
+  else
+    return 0; # No /command found at start of response
   fi
-  return 0;
+  # remove /command from response
+  local response=$(echo "$response" | awk '{ sub(/^[^ ]+ */, "", $0); print }')
+  case "$command" in
+    /topic)
+      if [ -z "$response" ]; then
+        sendMessageToTerminal "*** ERROR: No topic to set"
+        return 1; # Command handled
+      fi
+      addToContext "*** <$model> changed topic to: $response"
+      return 1; # Command handled
+      ;;
+    /quit)
+      quitChat "$model" "$response"
+      return 1; # Command handled
+      ;;
+  esac
+  return 0; # No /command handled
 }
 
 startRound() {
