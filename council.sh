@@ -84,6 +84,7 @@ Admin Commands:
 /kick [model]    - Kick model out of the chat
 /invite [model]  - Invite model into the chat
 /rules           - View the Chat Instructions sent to models
+/clear           - Clear the screen
 "
 }
 
@@ -443,6 +444,10 @@ handleAdminCommands() {
       ;;
     /rules|/instructions|/instruction)
       sendToTerminal "$chatInstructions"
+      return $YES_COMMAND_HANDLED
+      ;;
+    /clear|/cls)
+      clear
       return $YES_COMMAND_HANDLED
       ;;
     *)
