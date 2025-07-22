@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.15"
+VERSION="3.16"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -214,7 +214,7 @@ parseCommandLine() {
         validateAndSetArgument "$1" "$2" "TEXT_WRAP"
         shift 2
         ;;
-      -*|--*=|--*) # unsupported flags
+      -*) # unsupported flags
         error "Unsupported flag: $1" >&2
         exit $RETURN_ERROR
         ;;
@@ -425,7 +425,6 @@ handleAdminCommands() {
       return $YES_COMMAND_HANDLED
       ;;
     /list) # List models currently in chat
-      modelsCount=""
       sendToTerminal "\nThere are ${#models[@]} models in the chat:\n"
       sendToTerminal "$(printf "%s\n" "${models[@]}")\n"
       return $YES_COMMAND_HANDLED
@@ -481,7 +480,7 @@ handleAdminCommands() {
       clear
       return $YES_COMMAND_HANDLED
       ;;
-    *)
+    /*)
       error "Unknown Command"
       return $YES_COMMAND_HANDLED
       ;;
@@ -513,14 +512,14 @@ handleBasicCommands() {
 
 handleCommands() {
   local message="$1"
-  local message=$(echo "$message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//') # Remove leading/trailing whitespace
+  message=$(echo "$message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//') # Remove leading/trailing whitespace
   local command=$(echo "$message" | awk '{print $1}' | tr '[:upper:]' '[:lower:]') # Get first word in message, to lowercase
   if [[ "$command" =~ ^/ ]]; then # If starts with a / then it is a command
     debug "handleCommands: command: $command"
   else
     return $NO_COMMAND_HANDLED
   fi
-  local message=$(echo "$message" | awk '{ sub(/^[^ ]+ */, "", $0); print }') # remove /command from message
+  message=$(echo "$message" | awk '{ sub(/^[^ ]+ */, "", $0); print }') # remove /command from message
 
   handleBasicCommands "$command" "$message"
   local handleBasicCommandsReturn=$?
@@ -549,11 +548,6 @@ startRound() {
     round[j]=$temp
   done
   debug "startRound: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
-}
-
-stopModel() {
-  ollama stop "$1"
-  debug "Stopped model: $1"
 }
 
 userReply() {
@@ -642,7 +636,6 @@ while true; do
   echo -ne "\r\033[K" # clear line
   debug "called: runCommandWithTimeout"
   message=$(removeThinking "$message")
-  stopModel "$model"
   if [ "$SHOW_EMPTY" != 1 ] && [ -z "$message" ]; then
     debug "No message from <$model> within $TIMEOUT seconds"
   else
