@@ -8,6 +8,8 @@ All in a single Bash shell script.
 
 See the [example chats](#example-chat) for demo chat logs.
 
+For Help and Discussions please join the [Attogram Discord Channel](https://discord.gg/BGQJCbYVBa)
+
 ## Usage
 
 ```
