@@ -134,9 +134,9 @@ debug() {
 
 sendToTerminal() {
   if [ "$TEXT_WRAP" -ge 1 ]; then
-    printf "%s\n" "$1" | fold -s -w "$TEXT_WRAP"
+    printf "%b\n" "$1" | fold -s -w "$TEXT_WRAP"
   else
-    printf "%s\n" "$1"
+    printf "%b\n" "$1"
   fi
 }
 
