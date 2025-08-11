@@ -128,15 +128,15 @@ noColors() {
 
 debug() {
   if [ "$DEBUG_MODE" -eq 1 ]; then
-    >&2 echo -e "${COLOR_DEBUG}[$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
+    >&2 printf "%s\n" "${COLOR_DEBUG}[$(date '+%Y-%m-%d %H:%M:%S')] $1${COLOR_RESET}"
   fi
 }
 
 sendToTerminal() {
   if [ "$TEXT_WRAP" -ge 1 ]; then
-    echo -e "$1" | fold -s -w "$TEXT_WRAP"
+    printf "%s\n" "$1" | fold -s -w "$TEXT_WRAP"
   else
-    echo -e "$1"
+    printf "%s\n" "$1"
   fi
 }
 
@@ -315,22 +315,22 @@ setupLogging() {
    if [ ! -d "$LOG_DIR" ]; then # if log directory doesn't exist
        mkdir "$LOG_DIR" # create it # 2>/dev/null
    fi
-   echo -e "\nChat Log Started: $(date '+%Y-%m-%d %H:%M:%S')\n" >> "${LOG_DIR}/messages.txt"
+   printf "\nChat Log Started: %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" >> "${LOG_DIR}/messages.txt"
 }
 
 saveRulesToLog() {
-  echo -e "$rules" > "${LOG_DIR}/rules.txt"
+  printf "%s\n" "$rules" > "${LOG_DIR}/rules.txt"
 }
 
 saveMessageToLog() {
-  echo -e "$1" >> "${LOG_DIR}/messages.txt" # append message to message log
+  printf "%s\n" "$1" >> "${LOG_DIR}/messages.txt" # append message to message log
 }
 
 addToContext() {
   local message="$1"
   message="$(showTimestamp)${message}" # optional timestamp
   if [ "$TEXT_WRAP" -ge 1 ]; then
-    message=$(echo -e "$message" | fold -s -w "$TEXT_WRAP")
+    message=$(printf "%s\n" "$message" | fold -s -w "$TEXT_WRAP")
   fi
   context+="\n$message" # add the message to the context
   context=$(echo "$context" | tail -n "$CHAT_LOG_LINES") # trim context to $CHAT_LOG_LINES lines
@@ -350,8 +350,9 @@ removeThinking() {
 }
 
 ollamaRunWithTimeout() {
+  local stderrFile=$(mktemp)
   (
-    ollama run "$model" --hidethinking -- "${rules}${context}" 2>/dev/null
+    ollama run "$model" --hidethinking -- "${rules}${context}" 2> "$stderrFile"
   ) &
   local pidOllama=$!
   (
@@ -362,7 +363,15 @@ ollamaRunWithTimeout() {
   ) &
   local pidOllamaTimeout=$!
   wait $pidOllama 2>/dev/null
+  local exitCode=$?
   kill $pidOllamaTimeout 2>/dev/null
+  if [ $exitCode -ne 0 ]; then
+    local stderr=$(<"$stderrFile")
+    if [ -n "$stderr" ]; then
+      error "Ollama error for model <$model>:\n$stderr"
+    fi
+  fi
+  rm "$stderrFile"
 }
 
 removeModel() {
@@ -403,10 +412,25 @@ quitChat() {
   fi
   removeModel "$model"
   if [ ${#models[@]} -lt 1 ]; then
-    # TODO - if user is in chat, do not end
-    echo; echo "${COLOR_SYSTEM}*** No models remaining. Chat ending.${COLOR_RESET}"
-    exit $RETURN_SUCCESS
+    if [[ "$CHAT_MODE" != "reply" ]]; then
+      echo; echo "${COLOR_SYSTEM}*** No models remaining. Chat ending.${COLOR_RESET}"
+      exit $RETURN_SUCCESS
+    else
+      notice "No models remaining. /invite a new model or /quit"
+    fi
   fi
+}
+
+inArray() {
+  local element="$1"
+  shift
+  local arr=("$@")
+  for item in "${arr[@]}"; do
+    if [[ "$item" == "$element" ]]; then
+      return 0 # found
+    fi
+  done
+  return 1 # not found
 }
 
 handleAdminCommands() {
@@ -445,7 +469,10 @@ handleAdminCommands() {
         error "No model specified to kick"
         return $YES_COMMAND_HANDLED
       fi
-      # TODO - check if model is in the chat
+      if ! inArray "$message" "${models[@]}"; then
+        error "Model <$message> is not in the chat."
+        return $YES_COMMAND_HANDLED
+      fi
       addToContext "*** <user> kicked <$message> out of the chat"
       removeModel "$message"
       return $YES_COMMAND_HANDLED
@@ -455,9 +482,15 @@ handleAdminCommands() {
         error "No model specified to invite"
         return $YES_COMMAND_HANDLED
       fi
-      # TODO - check if model exists in Ollama...
-      # TODO - check if model is already present in chat...
-      #addToContext "*** <user> invited <$response> to the chat"
+      if inArray "$message" "${models[@]}"; then
+        error "Model <$message> is already in the chat."
+        return $YES_COMMAND_HANDLED
+      fi
+      local ollamaModels=($(ollama list | awk '{if (NR > 1) print $1}'))
+      if ! inArray "$message" "${ollamaModels[@]}"; then
+        error "Model <$message> not found in Ollama."
+        return $YES_COMMAND_HANDLED
+      fi
       models+=("$message")
       round+=("$message")
       addToContext "*** <$message> joined the chat"
