@@ -566,7 +566,7 @@ userReply() {
   fi
   handleCommands "$userMessage"
   local handleCommandsReturn=$? # get return status code of handleCommands
-  if [[ "$handleCommandsReturn" -eq "$NO_HANDLED_COMMAND" ]]; then
+  if [[ "$handleCommandsReturn" -eq "$NO_COMMAND_HANDLED" ]]; then
     addToContext "<$model> $userMessage"
     return
   fi
