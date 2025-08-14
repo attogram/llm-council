@@ -6,7 +6,7 @@
 # Usage help: ./council.sh -h
 
 NAME="llm-council"
-VERSION="3.16.1"
+VERSION="3.17.0"
 URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
@@ -20,6 +20,8 @@ topic=""      # The current topic
 rules=""      # Chat Rules sent in the prompt to models
 noModels=0    # Start with No models (0 = no, 1 = yes)
 colorToggle=0 # Track alternating response color schemes
+MODEL_QUIT_ENABLED=1 # Models can use /quit. 0 = no, 1 = yes
+TOPIC_LOCKED=0 # Topic is locked. 0 = no, 1 = yes
 
 CHAT_MODE="reply"  # Chat mode: nouser, reply
 CHAT_LOG_LINES=500 # number of lines in the chat log
@@ -64,6 +66,8 @@ Flags:
   -w,  -wrap        Text wrap lines to # characters
   -nc, -nocolors    Do not use ANSI colors
   -d,  -debug       Debug Mode
+  -dmq, -disablemodelquit  Disable /quit command for models
+  -lt, -locktopic    Lock the topic, models can not change it
   -v,  -version     Show version information
   -h,  -help        Help for $NAME
   [topic]           Set the chat topic (Optional)
@@ -73,6 +77,7 @@ Flags:
 commandHelp() {
   echo "Chat Commands:
 
+/multi                   - Multi-line input mode
 /topic [Your Topic]      - Set a new topic
 /quit (optional reason)  - Leave the chat
 
@@ -89,16 +94,29 @@ Admin Commands:
 /log             - View the Chat Log
 /round           - List models in the current round
 /clear           - Clear the screen
+/mode [reply|nouser] - Set chat mode
+/timeout [secs]  - Set model response timeout
+/wrap [chars]    - Set text wrap
+/timestamp       - Toggle timestamps
+/showempty       - Toggle showing empty messages
+/colors          - Toggle colors
+/debug           - Toggle debug mode
 /help            - This command list
 "
 }
 
 setRules() {
+  local topic_instruction
+  if [ "$TOPIC_LOCKED" -eq 1 ]; then
+    topic_instruction="The topic is locked. The current topic is: $topic"
+  else
+    topic_instruction="If you want to set a new topic, send ONLY the 1 line command: /topic <new topic>"
+  fi
   rules="You are in a group chat with ${#models[@]} members.
 You are user <${model:-user}>.
 If you want to mention another user, you MUST use syntax: @username.
 If you want to leave the chat, send ONLY the 1 line command: /quit <optional reason>
-If you want to set a new topic, send ONLY the 1 line command: /topic <new topic>
+$topic_instruction
 Review the Chat Log below. Then send your message to the group chat.
 Be concise. You MUST limit your response to $MESSAGE_LIMIT words or less.
 
@@ -168,6 +186,14 @@ parseCommandLine() {
     case "$1" in
       -d|-debug|--debug) # Debug Mode
         DEBUG_MODE=1
+        shift
+        ;;
+      -dmq|-disablemodelquit|--disable-model-quit) # Disable model quit
+        MODEL_QUIT_ENABLED=0
+        shift
+        ;;
+      -lt|-locktopic|--lock-topic) # Lock topic
+        TOPIC_LOCKED=1
         shift
         ;;
       -h|-help|--help) # help
@@ -433,6 +459,52 @@ inArray() {
   return 1 # not found
 }
 
+handleMentions() {
+  local message="$1"
+  local author="$2"
+  local mentions
+  mentions=$(echo "$message" | grep -oP --color=never '@[a-zA-Z0-9:.-]+')
+  if [ -z "$mentions" ]; then
+    return
+  fi
+  for mention in $mentions; do
+    local mentioned_model=${mention:1}
+    if ! inArray "$mentioned_model" "${models[@]}"; then
+      debug "Mentioned model <$mentioned_model> is not in the chat."
+      continue
+    fi
+    debug "Model <$author> mentioned <$mentioned_model>"
+    if [ "$author" == "user" ]; then
+      debug "User mentioned <$mentioned_model>. Moving to front of round."
+      local new_round=()
+      for m in "${round[@]}"; do
+        if [ "$m" != "$mentioned_model" ]; then
+          new_round+=("$m")
+        fi
+      done
+      round=("${new_round[@]}")
+      round=("$mentioned_model" "${round[@]}")
+    else
+      local chance=$((RANDOM % 100))
+      debug "Mention chance: $chance"
+      if [ $chance -lt 75 ]; then
+        debug "Model <$mentioned_model> gets to speak next."
+        local new_round=()
+        for m in "${round[@]}"; do
+          if [ "$m" != "$mentioned_model" ]; then
+            new_round+=("$m")
+          fi
+        done
+        round=("${new_round[@]}")
+        round=("$mentioned_model" "${round[@]}")
+      else
+        debug "Model <$mentioned_model> was mentioned, but does not get to speak next."
+      fi
+    fi
+    break
+  done
+}
+
 handleAdminCommands() {
   local command="$1"
   local message="$2"
@@ -513,6 +585,84 @@ handleAdminCommands() {
       clear
       return $YES_COMMAND_HANDLED
       ;;
+    /mode)
+      if [ "$message" == "reply" ]; then
+        CHAT_MODE="reply"
+        addToContext "*** <user> set chat mode to reply"
+      elif [ "$message" == "nouser" ]; then
+        CHAT_MODE="nouser"
+        addToContext "*** <user> set chat mode to nouser"
+      else
+        error "Invalid mode. Use 'reply' or 'nouser'"
+      fi
+      return $YES_COMMAND_HANDLED
+      ;;
+    /timeout)
+      if [ -z "$message" ]; then
+        error "No timeout specified"
+        return $YES_COMMAND_HANDLED
+      fi
+      if ! [[ "$message" =~ ^[0-9]+$ ]]; then
+        error "Timeout must be an integer"
+        return $YES_COMMAND_HANDLED
+      fi
+      TIMEOUT="$message"
+      addToContext "*** <user> set timeout to $TIMEOUT seconds"
+      return $YES_COMMAND_HANDLED
+      ;;
+    /wrap)
+      if [ -z "$message" ]; then
+        error "No wrap value specified"
+        return $YES_COMMAND_HANDLED
+      fi
+      if ! [[ "$message" =~ ^[0-9]+$ ]]; then
+        error "Wrap must be an integer"
+        return $YES_COMMAND_HANDLED
+      fi
+      TEXT_WRAP="$message"
+      addToContext "*** <user> set text wrap to $TEXT_WRAP"
+      return $YES_COMMAND_HANDLED
+      ;;
+    /timestamp)
+      if [ "$TIME_STAMP" -eq 1 ]; then
+        TIME_STAMP=0
+        addToContext "*** <user> disabled timestamps"
+      else
+        TIME_STAMP=1
+        addToContext "*** <user> enabled timestamps"
+      fi
+      return $YES_COMMAND_HANDLED
+      ;;
+    /showempty)
+      if [ "$SHOW_EMPTY" -eq 1 ]; then
+        SHOW_EMPTY=0
+        addToContext "*** <user> disabled showing empty messages"
+      else
+        SHOW_EMPTY=1
+        addToContext "*** <user> enabled showing empty messages"
+      fi
+      return $YES_COMMAND_HANDLED
+      ;;
+    /colors)
+      if [ -n "$COLOR_SYSTEM" ]; then
+        noColors
+        addToContext "*** <user> disabled colors"
+      else
+        yesColors
+        addToContext "*** <user> enabled colors"
+      fi
+      return $YES_COMMAND_HANDLED
+      ;;
+    /debug)
+      if [ "$DEBUG_MODE" -eq 1 ]; then
+        DEBUG_MODE=0
+        addToContext "*** <user> disabled debug mode"
+      else
+        DEBUG_MODE=1
+        addToContext "*** <user> enabled debug mode"
+      fi
+      return $YES_COMMAND_HANDLED
+      ;;
     /*)
       error "Unknown Command"
       return $YES_COMMAND_HANDLED
@@ -526,6 +676,10 @@ handleBasicCommands() {
   local message="$2"
   case "$command" in
     /topic) # Change the topic
+      if [ "$TOPIC_LOCKED" -eq 1 ] && [ "$model" != "user" ]; then
+        debug "Model <$model> tried to change topic, but it is locked."
+        return $YES_COMMAND_HANDLED
+      fi
       if [ -z "$message" ]; then
         # TODO - differentiate between user /topic (show error) and model /topic
         error "No topic to set"
@@ -536,6 +690,10 @@ handleBasicCommands() {
       return $YES_COMMAND_HANDLED
       ;;
     /quit|/leave)
+      if [ "$model" != "user" ] && [ "$MODEL_QUIT_ENABLED" -eq 0 ]; then
+        debug "Model <$model> tried to quit, but it is disabled."
+        return $YES_COMMAND_HANDLED
+      fi
       quitChat "$model" "$message"
       return $YES_COMMAND_HANDLED
       ;;
@@ -589,22 +747,29 @@ userReply() {
   fi
   debug "userReply"
   model="user"
-  local userMessage=""
-  echo -n "${COLOR_SYSTEM}<$model>${COLOR_RESET} "
-  read -r userMessage < /dev/tty
-  echo -ne "\033[A\r\033[K" # move 1 line up and clear line
-  if [ -z "$userMessage" ]; then
-    debug "No user message"
-    return
-  fi
-  handleCommands "$userMessage"
-  local handleCommandsReturn=$? # get return status code of handleCommands
-  if [[ "$handleCommandsReturn" -eq "$NO_COMMAND_HANDLED" ]]; then
-    addToContext "<$model> $userMessage"
-    return
-  fi
-  # echo
-  userReply # user /command handled, allow user to respond again
+  while true; do
+    local userMessage=""
+    echo -n "${COLOR_SYSTEM}<$model>${COLOR_RESET} "
+    read -r userMessage < /dev/tty
+    echo -ne "\033[A\r\033[K" # move 1 line up and clear line
+    local trimmedMessage
+    trimmedMessage=$(echo "$userMessage" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [[ "$trimmedMessage" == "/multi" ]]; then
+      sendToTerminal "${COLOR_SYSTEM}Multi-line input mode. Press Ctrl+D on a new line when finished.${COLOR_RESET}"
+      sendToTerminal "${COLOR_SYSTEM}---${COLOR_RESET}"
+      userMessage=$(cat)
+      sendToTerminal "${COLOR_SYSTEM}---${COLOR_RESET}"
+    fi
+    if [ -z "$userMessage" ]; then
+      debug "No user message"
+      return
+    fi
+    if handleCommands "$userMessage"; then
+      addToContext "<$model> $userMessage"
+      handleMentions "$userMessage" "$model"
+      return
+    fi
+  done
 }
 
 intro() {
@@ -672,7 +837,10 @@ while true; do
   if [ "$SHOW_EMPTY" != 1 ] && [ -z "$message" ]; then
     debug "No message from <$model> within $TIMEOUT seconds"
   else
-    handleCommands "$message" && addToContext "<$model> $message"
+    if handleCommands "$message"; then
+      addToContext "<$model> $message"
+      handleMentions "$message" "$model"
+    fi
   fi
 done
 exitCleanup
