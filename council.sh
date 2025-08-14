@@ -5,6 +5,16 @@
 #
 # Usage help: ./council.sh -h
 
+if [ -z "$BASH_VERSION" ]; then
+  echo "Error: This script requires Bash to run." >&2
+  exit 1
+fi
+if (( ${BASH_VERSINFO[0]} < 3 || (${BASH_VERSINFO[0]} == 3 && ${BASH_VERSINFO[1]} < 2) )); then
+    echo "Error: This script requires Bash version 3.2 or higher." >&2
+    echo "You are using Bash version $BASH_VERSION." >&2
+    exit 1
+fi
+
 NAME="llm-council"
 VERSION="3.17.0"
 URL="https://github.com/attogram/llm-council"
@@ -166,19 +176,6 @@ error() {
   >&2 sendToTerminal "${COLOR_DEBUG}ERROR: $1${COLOR_RESET}"
 }
 
-validateAndSetArgument() {
-  local flag=$1
-  local value=$2
-  local var_name=$3
-  if [ -n "$value" ] && [ ${value:0:1} != "-" ]; then
-    eval "$var_name='$value'"
-    return $RETURN_SUCCESS
-  else
-    error "Argument for $flag is missing" >&2
-    exit $RETURN_ERROR
-  fi
-}
-
 parseCommandLine() {
   modelsList=""
   topic=""
@@ -213,8 +210,13 @@ parseCommandLine() {
         shift
         ;;
       -m|-model|--model|-models|--models) # specify models to run
-        validateAndSetArgument "$1" "$2" "modelsList"
-        shift 2
+        if [ -n "$2" ] && [[ "$2" != -* ]]; then
+          modelsList="$2"
+          shift 2
+        else
+          error "Argument for $1 is missing" >&2
+          exit $RETURN_ERROR
+        fi
         ;;
       -nm|-nomodels|--nomodels)
         noModels=1
@@ -225,8 +227,13 @@ parseCommandLine() {
         shift
         ;;
       -to|-timeout|--timeout) # set timeout
-        validateAndSetArgument "$1" "$2" "TIMEOUT"
-        shift 2
+        if [ -n "$2" ] && [[ "$2" != -* ]]; then
+          TIMEOUT="$2"
+          shift 2
+        else
+          error "Argument for $1 is missing" >&2
+          exit $RETURN_ERROR
+        fi
         ;;
       -ts|-timestamp|--timestamp|-timestamps|--timestamps) # show timestamps
         TIME_STAMP=1
@@ -237,8 +244,13 @@ parseCommandLine() {
         exit $RETURN_SUCCESS
         ;;
       -w|-wrap|--wrap) # wrap lines
-        validateAndSetArgument "$1" "$2" "TEXT_WRAP"
-        shift 2
+        if [ -n "$2" ] && [[ "$2" != -* ]]; then
+          TEXT_WRAP="$2"
+          shift 2
+        else
+          error "Argument for $1 is missing" >&2
+          exit $RETURN_ERROR
+        fi
         ;;
       -*) # unsupported flags
         error "Unsupported flag: $1" >&2
@@ -250,8 +262,6 @@ parseCommandLine() {
         ;;
     esac
   done
-  # set positional arguments in their proper place
-  eval set -- "$topic"
 }
 
 setModels() {
@@ -463,7 +473,7 @@ handleMentions() {
   local message="$1"
   local author="$2"
   local mentions
-  mentions=$(echo "$message" | grep -oP --color=never '@[a-zA-Z0-9:.-]+')
+  mentions=$(echo "$message" | grep -oE '@[a-zA-Z0-9:.-]+')
   if [ -z "$mentions" ]; then
     return
   fi
@@ -681,8 +691,11 @@ handleBasicCommands() {
         return $YES_COMMAND_HANDLED
       fi
       if [ -z "$message" ]; then
-        # TODO - differentiate between user /topic (show error) and model /topic
-        error "No topic to set"
+        if [ "$model" == "user" ]; then
+          error "No topic to set"
+        else
+          debug "Model <$model> sent empty /topic command. Ignoring."
+        fi
         return $YES_COMMAND_HANDLED
       fi
       topic="$message"
