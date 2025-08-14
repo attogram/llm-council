@@ -5,19 +5,15 @@
 #
 # Usage help: ./council.sh -h
 
-if [ -z "$BASH_VERSION" ]; then
-  echo "Error: This script requires Bash to run." >&2
+NAME="llm-council"
+VERSION="3.18.0"
+URL="https://github.com/attogram/llm-council"
+
+if (( ${BASH_VERSINFO[0]} < 3 || (${BASH_VERSINFO[0]} == 3 && ${BASH_VERSINFO[1]} < 2) )); then
+  echo "Error: This script requires Bash version 3.2 or higher." >&2
+  echo "You are using Bash version $BASH_VERSION." >&2
   exit 1
 fi
-if (( ${BASH_VERSINFO[0]} < 3 || (${BASH_VERSINFO[0]} == 3 && ${BASH_VERSINFO[1]} < 2) )); then
-    echo "Error: This script requires Bash version 3.2 or higher." >&2
-    echo "You are using Bash version $BASH_VERSION." >&2
-    exit 1
-fi
-
-NAME="llm-council"
-VERSION="3.17.0"
-URL="https://github.com/attogram/llm-council"
 
 trap exitCleanup SIGINT # Trap CONTROL-C to cleanly exit
 
