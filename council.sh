@@ -9,14 +9,6 @@ NAME="llm-council"
 VERSION="3.18.0"
 URL="https://github.com/attogram/llm-council"
 
-# Source the Ollama Bash Lib
-ollama_bash_lib="$(dirname "$0")/lib/ollama_bash_lib.sh"
-if [[ ! -f "$ollama_bash_lib" ]]; then
-  echo "ERROR: Ollama Bash Lib Not Found: $ollama_bash_lib"
-  echo "Please download it from https://github.com/attogram/ollama-bash-lib"
-  exit 1
-fi
-source "$ollama_bash_lib"
 if (( ${BASH_VERSINFO[0]} < 3 || (${BASH_VERSINFO[0]} == 3 && ${BASH_VERSINFO[1]} < 2) )); then
   echo "Error: This script requires Bash version 3.2 or higher." >&2
   echo "You are using Bash version $BASH_VERSION." >&2
@@ -51,6 +43,301 @@ RETURN_SUCCESS=0
 RETURN_ERROR=1
 YES_COMMAND_HANDLED=1
 NO_COMMAND_HANDLED=0
+
+################################################################################
+# Ollama Bash Lib Functions
+################################################################################
+
+OLLAMA_LIB_API="${OLLAMA_HOST:-http://localhost:11434}" # Ollama API URL, No slash at end
+OLLAMA_LIB_DEBUG="${OLLAMA_LIB_DEBUG:-0}" # 0 = debug off, 1 = debug, 2 = verbose debug
+OLLAMA_LIB_TIMEOUT="${OLLAMA_LIB_TIMEOUT:-300}" # Curl timeout in seconds
+OLLAMA_LIB_TURBO_KEY="" # Turbo API Key
+OLLAMA_LIB_STREAM=0 # Streaming mode: 0 = No streaming, 1 = Yes streaming
+OLLAMA_LIB_THINKING="${OLLAMA_LIB_THINKING:-off}" # Thinking mode: off, on, hide
+OLLAMA_LIB_TOOLS_DEFINITION=() # Array of tool definitions
+
+_redact() {
+  local msg="$1"
+  if [[ -n "${OLLAMA_LIB_TURBO_KEY}" ]]; then
+    msg=${msg//"${OLLAMA_LIB_TURBO_KEY}"/'[REDACTED]'} # never show the private api key
+  fi
+  printf '%s' "$msg"
+}
+
+_lib_debug() {
+  if [ "$DEBUG_MODE" -eq 1 ]; then
+    local date_string
+    date_string="$(if ! date '+%H:%M:%S:%N' 2>/dev/null; then date '+%H:%M:%S'; fi)"
+    printf "[DEBUG] ${date_string}: %s\n" "$(_redact "$1")" >&2
+  fi
+}
+
+_lib_error() {
+  error "$(_redact "$1")"
+}
+
+_exists() {
+  command -v "$1" >/dev/null 2>&1
+  return $?
+}
+
+_is_valid_json() {
+  if [[ -z "$1" ]]; then
+    _lib_debug '_is_valid_json: empty string'
+    return 1
+  fi
+  if ! _exists 'jq'; then _lib_error '_is_valid_json: jq Not Found'; return 1; fi
+  printf '%s' "$1" | jq -e '.' >/dev/null 2>&1
+  local return_code=$?
+  case $return_code in
+    0) _lib_debug '_is_valid_json: success'; return 0 ;;
+    1) _lib_debug '_is_valid_json: FAILURE jq: output false or null: return 1'; return 1 ;;
+    2) _lib_debug '_is_valid_json: USAGE ERROR jq: incorrect command-line options: return 2'; return 2 ;;
+    3) _lib_debug '_is_valid_json: COMPILE ERROR jq: filter syntax error: return 3'; return 3 ;;
+    4) _lib_debug '_is_valid_json: NO OUTPUT jq: result empty: return 4'; return 4 ;;
+    5) _lib_debug '_is_valid_json: HALT_ERROR jq: return 5'; return 5 ;;
+    *) _lib_debug "_is_valid_json: UNKNOWN jq error: return $return_code"; return "$return_code" ;;
+  esac
+}
+
+_call_curl() {
+  _lib_debug "_call_curl: [${1:0:42}] [${2:0:42}] ${3:0:120}"
+  if ! _exists 'curl'; then _lib_error '_call_curl: curl Not Found'; return 1; fi
+  local method="$1"
+  if [[ -z "$method" || ( "$method" != "GET" && "$method" != "POST" ) ]]; then
+    _lib_error '_call_curl: Method Not Found. Usage: _call_curl "GET|POST" "/api/path" "{ optional json content }"'
+    return 1
+  fi
+  local endpoint="$2"
+  if [[ -n "$endpoint" && ( "$endpoint" != /* || "$endpoint" == *" "* || "$endpoint" == *"\\"* ) ]]; then
+    _lib_error "_call_curl: Invalid API Path: [${endpoint:0:120}]"
+    return 1
+  fi
+  local json_body="$3"
+  if [[ -n "$json_body" ]] && ! _is_valid_json "$json_body"; then
+    _lib_error "_call_curl: JSON body is invalid: [${json_body:0:120}]"
+    return 1
+  fi
+  _lib_debug "_call_curl: OLLAMA_LIB_API: $OLLAMA_LIB_API"
+  local curl_args=(-s -N --max-time "$OLLAMA_LIB_TIMEOUT" -H 'Content-Type: application/json' -w '\n%{http_code}')
+  if [[ -n "${OLLAMA_LIB_TURBO_KEY}" ]]; then
+    _lib_debug '_call_curl: Turbo Mode'
+    curl_args+=( -H "Authorization: Bearer ${OLLAMA_LIB_TURBO_KEY}" )
+  fi
+  curl_args+=( -X "$method" )
+  curl_args+=( "${OLLAMA_LIB_API}${endpoint}" )
+  local response
+  local curl_exit_code
+  if [[ -n "$json_body" ]]; then
+    _lib_debug "_call_curl: json_body: ${json_body:0:120}"
+    curl_args+=( -d "@-" )
+    _lib_debug "_call_curl: piping json_body | curl ${curl_args[*]}"
+    response="$(printf '%s' "$json_body" | curl "${curl_args[@]}")"
+    curl_exit_code=$?
+  else
+    _lib_debug "_call_curl: args: ${curl_args[*]}"
+    response="$(curl "${curl_args[@]}")"
+    curl_exit_code=$?
+  fi
+  if (( curl_exit_code )); then
+    _lib_error "_call_curl: curl command failed with exit code $curl_exit_code"
+    return "$curl_exit_code"
+  fi
+  local http_code
+  http_code="$(printf '%s' "$response" | tail -n1)"
+  local body
+  body="$(printf '%s' "$response" | sed '$d')"
+  if (( http_code >= 400 )); then
+    _lib_error "_call_curl: HTTP error ${http_code}: ${body}"
+    return 1
+  fi
+  printf '%s' "$body"
+  return 0
+}
+
+ollama_api_post() {
+  _lib_debug "ollama_api_post: [${1:0:42}] ${2:0:120}"
+  _call_curl "POST" "$1" "$2"
+  local error_curl=$?
+  if (( error_curl )); then
+    _lib_error "ollama_api_post: curl error: $error_curl"
+    return "$error_curl"
+  fi
+  _lib_debug 'ollama_api_post: success'
+  return 0
+}
+
+_is_valid_model() {
+  local model="${1:-}"
+  if [[ -z "$model" ]]; then
+    _lib_debug '_is_valid_model: Model name empty: getting random model'
+    model="$(ollama_model_random)"
+    if [[ -z "$model" ]]; then
+      _lib_debug '_is_valid_model: Model Not Found: ollama_model_random failed'
+      printf ''
+      return 1
+    fi
+  fi
+  if [[ ! "$model" =~ ^[a-zA-Z0-9._:/-]+$ ]]; then
+    _lib_debug "_is_valid_model: INVALID: [${model:0:120}]"
+    printf ''
+    return 1
+  fi
+  _lib_debug "_is_valid_model: VALID: [${model:0:120}]"
+  printf '%s' "$model"
+  return 0
+}
+
+ollama_model_random() {
+  if ! ollama_app_installed; then _lib_error 'ollama_model_random: ollama is not installed'; return 1; fi
+  local models
+  models=$(ollama list | awk 'NR>1 {print $1}' | grep -v '^$')
+  if [[ -z "$models" ]]; then
+    _lib_error 'ollama_model_random: get ollama list failed'
+    return 1
+  fi
+  if _exists 'shuf'; then
+    printf '%s\n' "$models" | shuf -n1
+  else
+    printf '%s\n' "$models" | awk 'BEGIN{srand()} {a[NR]=$0} END{if(NR) print a[int(rand()*NR)+1]}'
+  fi
+}
+
+_ollama_payload_generate() {
+  local model="$1"
+  local prompt="$2"
+  local stream=true
+  (( OLLAMA_LIB_STREAM == 0 )) && stream=false
+  local thinking=false
+  [[ "$OLLAMA_LIB_THINKING" == 'on' || "$OLLAMA_LIB_THINKING" == 'hide' ]] && thinking=true
+  local payload
+  payload="$(jq -c -n \
+    --arg model "$model" \
+    --arg prompt "$prompt" \
+    --argjson stream "$stream" \
+    --argjson thinking "$thinking" \
+    '{model: $model, prompt: $prompt, stream: $stream, thinking: $thinking}')"
+  if (( ${#OLLAMA_LIB_TOOLS_DEFINITION[@]} > 0 )); then
+    local tools_json
+    tools_json='['$(IFS=,; echo "${OLLAMA_LIB_TOOLS_DEFINITION[*]}")']'
+    payload="$(printf '%s' "$payload" | jq -c --argjson tools "$tools_json" '. + {tools: $tools}')"
+  fi
+  printf '%s' "$payload"
+}
+
+ollama_generate_json() {
+  _lib_debug "ollama_generate_json: [${1:0:42}] [${2:0:42}]"
+  if ! _exists 'jq'; then _lib_error 'ollama_generate_json: Not Found: jq'; return 1; fi
+  local model
+  model="$(_is_valid_model "$1")"
+  if [[ -z "$model" ]]; then
+    _lib_error 'ollama_generate_json: Not Found: model. Usage: ollama_generate_json "model" "prompt"'
+    return 1
+  fi
+  local prompt="$2"
+  if [[ -z "$prompt" ]]; then
+    _lib_error 'ollama_generate_json: Not Found: prompt. Usage: ollama_generate_json "model" "prompt"'
+    return 1
+  fi
+  local json_payload
+  json_payload="$(_ollama_payload_generate "$model" "$prompt")"
+  _lib_debug "ollama_generate_json: json_payload: ${json_payload:0:120}"
+  if ! ollama_api_post '/api/generate' "$json_payload"; then
+    _lib_error 'ollama_generate_json: ollama_api_post failed'
+    return 1
+  fi
+  _lib_debug 'ollama_generate_json: success'
+  return 0
+}
+
+ollama_generate() {
+  if ! _exists 'jq'; then _lib_error 'ollama_generate: jq Not Found'; return 1; fi
+  _lib_debug "ollama_generate: [${1:0:42}] [${2:0:42}]"
+  OLLAMA_LIB_STREAM=0
+  local result
+  result="$(ollama_generate_json "$1" "$2")"
+  local error_ollama_generate_json=$?
+  _lib_debug "ollama_generate: result: $(echo "$result" | wc -c | tr -d ' ') bytes: ${result:0:120}"
+  if (( error_ollama_generate_json )); then
+    _lib_error "ollama_generate: error_ollama_generate_json: $error_ollama_generate_json"
+    return 1
+  fi
+  if ! _is_valid_json "$result"; then
+    _lib_error 'ollama_generate: model response is not valid JSON'
+    return 1
+  fi
+  if error_msg=$(printf '%s' "$result" | jq -r '.error // empty'); then
+    if [[ -n $error_msg ]]; then
+      _lib_error "ollama_generate: $error_msg"
+      return 1
+    fi
+  fi
+  _lib_debug "ollama_generate: thinking: $OLLAMA_LIB_THINKING"
+  if [[ "$OLLAMA_LIB_THINKING" != 'hide' ]]; then
+    local thinking
+    thinking="$(printf '%s' "$result" | jq -r '.thinking // empty')"
+    if [[ -n "$thinking" ]]; then
+      _lib_debug 'ollama_generate: thinking FOUND'
+      printf '# <thinking>\n# %s\n# </thinking>\n\n' "$thinking" >&2
+    fi
+  fi
+  local result_response
+  result_response="$(printf '%s' "$result" | jq -r '.response')"
+  if [[ -z "$result_response" ]]; then
+    _lib_error 'ollama_generate: jq failed to get .response'
+    return 1
+  fi
+  printf '%s\n' "$result_response"
+  _lib_debug 'ollama_generate: success'
+  return 0
+}
+
+ollama_app_installed() {
+  _lib_debug 'ollama_app_installed'
+  _exists "ollama"
+}
+
+ollama_list() {
+  if ! ollama_app_installed; then _lib_error 'ollama_list: ollama is not installed'; return 1; fi
+  local list
+  if ! list="$(ollama list)"; then
+    _lib_error 'ollama_list: list=|ollama list failed'
+    return 1
+  fi
+  if ! echo "$list" | head -n+1; then
+    _lib_error 'ollama_list: echo|head failed'
+    return 1
+  fi
+  if ! echo "$list" | tail -n+2 | sort; then
+    _lib_error 'ollama_list: ollama echo|tail|sort failed'
+    return 1
+  fi
+  return 0
+}
+
+ollama_list_array() {
+  if ! ollama_app_installed; then _lib_error 'ollama_list_array: ollama is not installed'; return 1; fi
+  local models=()
+  while IFS= read -r line; do
+    models+=("$line")
+  done < <(ollama list | awk 'NR > 1 {print $1}' | sort)
+  echo "${models[@]}"
+  _lib_debug "ollama_list_array: ${#models[@]} models found: return 0"
+  return 0
+}
+
+ollama_ps() {
+  if ! ollama_app_installed; then _lib_error 'ollama_ps: ollama is not installed'; return 1; fi
+  if ! ollama ps; then
+    _lib_error 'ollama_ps: ollama ps failed'
+    return 1
+  fi
+  return 0
+}
+
+################################################################################
+# End Ollama Bash Lib Functions
+################################################################################
 
 banner() {
   echo "
