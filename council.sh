@@ -9,6 +9,14 @@ NAME="llm-council"
 VERSION="3.18.0"
 URL="https://github.com/attogram/llm-council"
 
+# Source the Ollama Bash Lib
+ollama_bash_lib="$(dirname "$0")/lib/ollama_bash_lib.sh"
+if [[ ! -f "$ollama_bash_lib" ]]; then
+  echo "ERROR: Ollama Bash Lib Not Found: $ollama_bash_lib"
+  echo "Please download it from https://github.com/attogram/ollama-bash-lib"
+  exit 1
+fi
+source "$ollama_bash_lib"
 if (( ${BASH_VERSINFO[0]} < 3 || (${BASH_VERSINFO[0]} == 3 && ${BASH_VERSINFO[1]} < 2) )); then
   echo "Error: This script requires Bash version 3.2 or higher." >&2
   echo "You are using Bash version $BASH_VERSION." >&2
@@ -264,7 +272,7 @@ setModels() {
   if [ "$noModels" -eq 1 ]; then
     return
   fi
-  models=($(ollama list | awk '{if (NR > 1) print $1}' | sort)) # Get list of models, sorted alphabetically
+  models=($(ollama_list_array)) # Get list of models, sorted alphabetically
   if [ -z "$models" ]; then
     error "No models installed in Ollama. Please install models with 'ollama pull <model-name>'" >&2
     exit $RETURN_ERROR
@@ -384,7 +392,7 @@ removeThinking() {
 ollamaRunWithTimeout() {
   local stderrFile=$(mktemp)
   (
-    ollama run "$model" --hidethinking -- "${rules}${context}" 2> "$stderrFile"
+    ollama_generate "$model" "${rules}${context}" 2> "$stderrFile"
   ) &
   local pidOllama=$!
   (
@@ -533,12 +541,12 @@ handleAdminCommands() {
       ;;
     /olist) # Ollama list
       sendToTerminal "\nModels available in Ollama:\n"
-      ollama list | awk '{if (NR > 1) print $1}' | sort
+      ollama_list
       return $YES_COMMAND_HANDLED
       ;;
     /ps) # Ollama ps
       sendToTerminal "\n"
-      ollama ps
+      ollama_ps
       sendToTerminal "\n"
       return $YES_COMMAND_HANDLED
       ;;
@@ -564,7 +572,7 @@ handleAdminCommands() {
         error "Model <$message> is already in the chat."
         return $YES_COMMAND_HANDLED
       fi
-      local ollamaModels=($(ollama list | awk '{if (NR > 1) print $1}'))
+      local ollamaModels=($(ollama_list_array))
       if ! inArray "$message" "${ollamaModels[@]}"; then
         error "Model <$message> not found in Ollama."
         return $YES_COMMAND_HANDLED
