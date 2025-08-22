@@ -10,6 +10,15 @@ See the [example chats](#example-chat) for demo chat logs.
 
 For Help and Discussions please join the [Attogram Discord Channel](https://discord.gg/BGQJCbYVBa)
 
+![Release](https://img.shields.io/github/v/release/attogram/llm-council?style=flat)
+![License](https://img.shields.io/github/license/attogram/llm-council?style=flat)
+![Bash ≥3.2](https://img.shields.io/badge/bash-%3E=3.2-blue?style=flat)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/t/attogram/llm-council?style=flat)
+![GitHub stars](https://img.shields.io/github/stars/attogram/llm-council?style=flat)
+![GitHub watchers](https://img.shields.io/github/watchers/attogram/llm-council?style=flat)
+![Forks](https://img.shields.io/github/forks/attogram/llm-council?style=flat)
+![Issues](https://img.shields.io/github/issues/attogram/llm-council?style=flat)
+
 ## Usage
 
 ```
