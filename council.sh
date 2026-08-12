@@ -29,7 +29,7 @@ colorToggle=0 # Track alternating response color schemes
 MODEL_QUIT_ENABLED=1 # Models can use /quit. 0 = no, 1 = yes
 TOPIC_LOCKED=0 # Topic is locked. 0 = no, 1 = yes
 
-CHAT_MODE="reply"  # Chat mode: nouser, reply
+CHAT_MODE="reply"  # Chat mode: nouser, reply, yesuser
 CHAT_LOG_LINES=500 # number of lines in the chat log
 LOG_DIR="./logs"   # Log Directory (no slash at end)
 DEBUG_MODE=0       # Debug mode. 1 = debug on, 2 = debug off
@@ -66,6 +66,7 @@ Flags:
   -nm, -nomodels    Start chat with no models
   -r,  -reply       User may respond after every model message (Default)
   -nu, -nouser      No user in chat, only models
+  -yu, -yesuser     User may respond at any time (interrupt models)
   -to, -timeout     Set timeout to # seconds
   -ts, -timestamp   Show Date and time for every message
   -se, -showempty   Show Empty messages (from timeouts)
@@ -100,7 +101,7 @@ Admin Commands:
 /log             - View the Chat Log
 /round           - List models in the current round
 /clear           - Clear the screen
-/mode [reply|nouser] - Set chat mode
+/mode [reply|nouser|yesuser] - Set chat mode
 /timeout [secs]  - Set model response timeout
 /wrap [chars]    - Set text wrap
 /timestamp       - Toggle timestamps
@@ -199,6 +200,10 @@ parseCommandLine() {
         ;;
       -r|-reply|--reply) # Chat mode: user reply after every model message
         CHAT_MODE="reply"
+        shift
+        ;;
+      -yu|-yesuser|--yesuser) # Chat mode: user can respond at any time
+        CHAT_MODE="yesuser"
         shift
         ;;
       -nc|-nocolor|--nocolor|-nocolors|--nocolors) # No ANSI Colors
@@ -598,8 +603,11 @@ handleAdminCommands() {
       elif [ "$message" == "nouser" ]; then
         CHAT_MODE="nouser"
         addToContext "*** <user> set chat mode to nouser"
+      elif [ "$message" == "yesuser" ]; then
+        CHAT_MODE="yesuser"
+        addToContext "*** <user> set chat mode to yesuser"
       else
-        error "Invalid mode. Use 'reply' or 'nouser'"
+        error "Invalid mode. Use 'reply', 'nouser', or 'yesuser'"
       fi
       return $YES_COMMAND_HANDLED
       ;;
@@ -837,11 +845,50 @@ while true; do
   if [ ${#round[@]} -eq 0 ]; then startRound; fi # If everyone has spoken, then restart round
   debug "model: <$model> -- round: <$(printf '%s> <' "${round[@]}" | sed 's/> <$//')>"
   setRules
-  debug "calling: runCommandWithTimeout"
   echo -n "${COLOR_SYSTEM}*** <$model> is typing...${COLOR_RESET}"
-  message=$(ollamaRunWithTimeout)
+
+  tmpOutput=$(mktemp)
+  (ollama run "$model" --hidethinking -- "${rules}${context}" > "$tmpOutput" 2>/dev/null) &
+  pidModel=$!
+  (
+    sleep "$TIMEOUT"
+    kill $pidModel 2>/dev/null
+  ) &
+  pidTimeout=$!
+  interrupted=0
+
+  while kill -0 $pidModel 2>/dev/null; do
+    if [ "$CHAT_MODE" = "yesuser" ]; then
+      if read -s -n 1 -t 0.2 2>/dev/null; then
+        kill $pidModel 2>/dev/null
+        kill $pidTimeout 2>/dev/null
+        wait $pidModel 2>/dev/null
+        interrupted=1
+        break
+      fi
+    else
+      sleep 0.2
+    fi
+  done
+
+  wait $pidModel 2>/dev/null
+  kill $pidTimeout 2>/dev/null
+
+  if [ $interrupted -eq 1 ]; then
+    echo -ne "\r\033[K${COLOR_SYSTEM}*** <$model> interrupted${COLOR_RESET}\n"
+    if [ "$CHAT_MODE" != "reply" ]; then
+      CHAT_MODE="reply"
+      addToContext "*** <user> joined the chat"
+    fi
+    model="user"
+    userReply
+    rm "$tmpOutput"
+    continue
+  fi
+
   echo -ne "\r\033[K" # clear line
-  debug "called: runCommandWithTimeout"
+  message=$(cat "$tmpOutput")
+  rm "$tmpOutput"
   message=$(removeThinking "$message")
   if [ "$SHOW_EMPTY" != 1 ] && [ -z "$message" ]; then
     debug "No message from <$model> within $TIMEOUT seconds"
